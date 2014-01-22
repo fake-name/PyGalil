@@ -52,21 +52,13 @@ class GalilInterface():
 	def __axisLetterToInt(self, axis):
 		return ord(axis[-1])-65
 
-	def __init__(self, ip, port = 23, fakeGalil = False, poll = False, resetGalil = False, download = True, unsol = True, dr = True):
+	def __init__(self, ip, port = 23, poll = False, resetGalil = False, download = True, unsol = True, dr = True):
 
 
 		self.port = port
 		self.ip = ip
 
 		print "Starting Interface"
-		if not fakeGalil:
-			import socket
-			print "using real socket at instantiation"
-		else:
-			import fakeSocket as socket
-			print "using fake socket at instantiation"
-
-
 
 
 		self.con = socket.create_connection((self.ip, self.port ), CONF_TIMEOUT)
@@ -205,7 +197,10 @@ class GalilInterface():
 		# and then look at the local connection information to figure out which interface we're using to 
 		# talk to the galil over TCP. It's probably safe to use that for UDP too
 		con = socket.create_connection((self.ip, self.port ), 1)
-		localIP = (con.getsockname()[0])
+		if not globalConf.fakeGalil:
+			localIP = (con.getsockname()[0])
+		else:
+			localIP = None
 		con.shutdown(socket.SHUT_RDWR)
 		con.close()
 
@@ -219,6 +214,9 @@ class GalilInterface():
  		                    socket.IPPROTO_UDP)
 
 		drSock.bind(UDP_ADDR_TUPLE)
+
+		if globalConf.fakeGalil:
+			return
 
 		print "Flushing UDP connection",
 		self.flushBufUDP(drSock, GALIL_UDP_ADDR_TUPLE)
@@ -741,11 +739,9 @@ class GalilInterface():
 					print "Stopping thread:", thread
 					thread.join()
 
-		if self.con:
-			try:							# Since this is called both manually and by the destructor, we have to simply catch and ignore errors here.
+		try:							# Since this is called both manually and by the destructor, we have to simply catch and ignore errors here.
 										# otherwise, there are errors arising from the fact that it winds up trying to close a closed connection.
-
-
+			if self.con:
 				print "Closing Connection"
 
 				if motorsOff:
@@ -756,9 +752,8 @@ class GalilInterface():
 				self.con.shutdown(socket.SHUT_RDWR)
 				self.con.close()
 				self.con = None
-			except:
-				print "Failed to close?"
-				pass
+		except:
+			pass
 
 
 	def __del__(self):

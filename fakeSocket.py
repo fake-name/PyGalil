@@ -10,6 +10,11 @@ class create_connection:
 	def recv(self, bytes):
 		return ":"
 
+	def shutdown(self, args):
+		pass
+
+	def close(self):
+		pass
 
 	def sendall(self, data):
 		pass
@@ -28,3 +33,19 @@ class timeout(StandardError):
 class error(StandardError):
 	def __init__(self, errno, address):
 		pass
+
+class socket():
+	def __init__(self, *args, **kwargs):
+		pass
+	def bind(self, wat):
+		pass
+	def sendto(self, hurr, durr):
+		pass
+
+	def settimeout(self, blargh):
+		pass
+
+SHUT_RDWR = "wat"
+AF_INET = "lol"
+SOCK_DGRAM = "derp"
+IPPROTO_UDP = "herp"
