@@ -1,0 +1,89 @@
+NO Set the maximum  position error before the motors are turned off
+ER 10000,10000
+
+NO Set the motors on axis 1 and two to turn off if they exceed the error limit
+OE 1,1
+
+#MAIN;
+  II 5;
+  MG "Starting loop";
+#LOOP;
+  'MG "IMA LOOPIN MAH CODE!";
+  WT 1000;
+  NO nop loop;
+JP #LOOP;
+
+
+NO Set up the input interrupt for the 1PPS stuff
+NO WAITPEQ - Wait for pin to equal
+NO Basically, if you don't wait for the pin to fall, you will trigger off the 
+NO same pulse repeatedly
+#ININT;
+  MG "Input Timestamp", TIME;
+#WAITPEQ;	
+	JP #WAITPEQ, (@IN[5]=0);
+RI;
+
+
+
+
+
+#POSERR
+  NO Triggerd when the motor exceeds the error threshold.
+  NO The OIE command should turn the motors off. This is just insurance.
+  MG "An Axis exceeded error threshold. Disabling motor"
+  MO
+RE0
+
+#HOMEA
+  NO The galil manual is incorrect in some of the code specifications.
+  NO for one, it states that you must strip leading spaces from programs
+  NO this is incorrect.
+
+  NO Empty lines are a problem, though. The galil software automtically sticks
+  NO a comment symbol in them (" ' ")
+  NO This is easy enough to do myself.
+
+  NO Apparently any line cannot be more then 80 characters long, though
+
+  IF (_MOA)
+    NO "BG" commands fail if the motor is off. Therefore, check motor state
+    MG "Motor is off. Cannot execute home operation"
+
+  ELSE
+    NO Save acceleration and jog speed values
+    T1 = _JGA
+    T2 = _ACA
+
+    NO then overwrite them
+    MG "Homing", T1
+    JGA=150000
+    ACA=50000
+
+    NO "FE" - find the opto-edge
+    FE A
+    BG A
+    AM A
+    MG "Found Opto-Index"; TP
+
+    NO Turn the jog speed WAAAY down when searching for the index
+    JGA=500
+
+    NO Do the index search ("FI")
+    FI A
+    BG A
+
+    AM A
+    MG "Motion Done"; TP
+
+    NO Finally, restore accel and jog speeds from before routine was run
+    JGA=T1
+    ACA=T2
+
+  ENDIF
+EN
+
+#DEBUG
+  MG "Hello There"
+EN
+
