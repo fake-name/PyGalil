@@ -38,6 +38,8 @@ class GalilInterface():
 	vel		= [0,0,0,0,0,0,0,0,0]
 	inMot		= [0,0,0,0,0,0,0,0,0]
 
+	udpPackets = 0
+	doUDPFileLog = False
 	oldTime = 0
 
 	udpInBuffer = ""
@@ -50,7 +52,7 @@ class GalilInterface():
 	def __axisLetterToInt(self, axis):
 		return ord(axis[-1])-65
 
-	def __init__(self, ip, port = 23, fakeGalil = False, poll = False, resetGalil = False, download = True, unsol = True):
+	def __init__(self, ip, port = 23, fakeGalil = False, poll = False, resetGalil = False, download = True, unsol = True, dr = True):
 
 
 		self.port = port
@@ -86,6 +88,10 @@ class GalilInterface():
 		if unsol:
 			print "Opening Unsolicited messages socket."
 			self.__initUnsolicitedMessageSocket()
+
+		if dr:
+			print "Setting up data-record transfers"
+			self.initUDPMessageSocket()
 
 	def __initUnsolicitedMessageSocket(self):
 		# The reccomended way for handling both solicited and unsolicited messages from the galil is to use two sockets. One socket is for normal 
@@ -264,7 +270,8 @@ class GalilInterface():
 
 
 	def pollUDP(self, udpSock, galilAddrTup):
-		fileH = open("posvelDR.txt", "a")
+		if self.doUDPFileLog:
+			fileH = open("posvelDR.txt", "a")
 		while self.running:
 
 			
@@ -274,23 +281,27 @@ class GalilInterface():
 				dr = PyGalil.drParse.parseDataRecord(dat)
 
 				if dr:
+					self.udpPackets += 1
 					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
 					#print dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"] & 0x1F
 					curTOW = PyGalil.drParse.getMsTOWwMasking()
 					towErr = curTOW - sampleTime
 					logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
 					#logStr = "DR Received, %s, %s, %s, %s\n" % (dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"])
-					print logStr,
-					fileH.write(logStr)
+					#print logStr,
+					if self.doUDPFileLog:
+						fileH.write(logStr)
 				else:
-					fileH.write("Bad DR Received, %s\n" % (time.time()))
+					if self.doUDPFileLog:
+						fileH.write("Bad DR Received, %s\n" % (time.time()))
 			except socket.timeout:					# Exit on timeout
 				pass
 
 			except socket.error:				# I've Seen socket.error errors a few times. They seem to not break anything.
 										# Therefore, we just ignore them
 				print "pollUDP socket.error wut"
-				fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
+				if self.doUDPFileLog:
+					fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
 		# Turn off the data-record outputs
 		self.sendAndRecieveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)	
 
@@ -314,8 +325,8 @@ class GalilInterface():
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
 										# Therefore, we just ignore them
 				print "pollUDP exiting socket.error wut"
-
-		fileH.close()
+		if self.doUDPFileLog:
+			fileH.close()
 
 	def __downloadFunctions(self):
 
