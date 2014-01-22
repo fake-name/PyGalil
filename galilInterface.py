@@ -5,9 +5,9 @@ import time
 import threading
 import traceback
 
-import queVars
+import globalConf
 
-if not queVars.fakeGalil:
+if not globalConf.fakeGalil:
 	import socket
 	print "Using real socket at start"
 else:
@@ -16,20 +16,20 @@ else:
 
 import sys
 
-import struct
-import drParse
+
+import PyGalil.drParse
 
 import os.path
 
 
 
 # Enables and disables logging of timestamps for analysis
-logTimeStamps = True
+LOG_TIMESTAMPS = True
 
 CONF_TIMEOUT = 0.5
 
 
-class GalilInterface:
+class GalilInterface():
 
 	numAxis		=	2		# the DMC-2120 has two axes
 	running		=	True
@@ -126,31 +126,30 @@ class GalilInterface:
 
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
 										# Therefore, we just ignore them
-				print "wut"
-				pass
+				print "socket.error - wut"
 
 			if retString.find("\r\n")+1:				# 
 				message, retString = retString.split("\r\n", 1)
 				print "Received message - ", message
 				
-				if logTimeStamps:
+				if LOG_TIMESTAMPS:
 					if message.find("Input Timestamp") + 1:
 						# for some bizarre reason, the galil returns timestamps with four trailing zeros (e.g. xxx.0000)
 						# The timestamps are ALWAYS just an integer
 						# Anyways, the python int() function can't handle strings with a decimal, so we split off the 
 						# empty fractional digits
-						time = int(message.split()[-1].split(".")[0])
-						delta = time - self.oldTime
-						self.oldTime = time
-						print "Timestamp", int(time), "Delta", delta
-						with open("tsLog.txt", "a") as fp:
-							fp.write("Timestamp, %s, %s \n" % (time, delta))
+						sampleTime = int(message.split()[-1].split(".")[0])
+						delta = sampleTime - self.oldTime
+						self.oldTime = sampleTime
+						print "Timestamp", int(sampleTime), "Delta", delta
+						with open("tsLog.txt", "a") as fileP:
+							fileP.write("Timestamp, %s, %s \n" % (sampleTime, delta))
 
 
 	def flushBufUDP(self, socketConnection, galilAddrTup):
 
 		self.sendAndRecieveUDP("TP;", socketConnection, galilAddrTup)
-		for x in range(2):
+		for cnt in range(2):
 			self.receiveUDP(socketConnection)
 	
 		self.udpInBuffer = ""
@@ -161,7 +160,7 @@ class GalilInterface:
 		ret = ""
 		while time.time() < (startTime + CONF_TIMEOUT):
 			try:
-				tmp, ip = socketConnection.recvfrom(1024)
+				tmp, ipAddr = socketConnection.recvfrom(1024)
 				self.udpInBuffer += tmp
 			except:
 				pass
@@ -228,7 +227,7 @@ class GalilInterface:
 
 		self.udpHandleNumber = self.__axisLetterToInt(ret)
 		if (self.udpHandleNumber > 7) or (self.udpHandleNumber < 0) :
-			raise ValueError, "Invalid handle number. Garbled data on init?"
+			raise ValueError("Invalid handle number. Garbled data on init?")
 
 		print "UDP Handle: \"%s\", e.g. handle %d" % (ret, self.udpHandleNumber)
 		
@@ -265,34 +264,33 @@ class GalilInterface:
 
 
 	def pollUDP(self, udpSock, galilAddrTup):
-		fp = open("posvelDR.txt", "a")
+		fileH = open("posvelDR.txt", "a")
 		while self.running:
 
 			
 			try:
 				dat, ip = udpSock.recvfrom(1024)
 				#print "received", len(dat), ip, 
-				dr = drParse.parseDataRecord(dat)
+				dr = PyGalil.drParse.parseDataRecord(dat)
 
 				if dr:
-					ts = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
+					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
 					#print dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"] & 0x1F
-					curTOW = drParse.getMsTOWwMasking()
-					towErr = curTOW - ts
-					logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, ts, towErr)
+					curTOW = PyGalil.drParse.getMsTOWwMasking()
+					towErr = curTOW - sampleTime
+					logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
 					#logStr = "DR Received, %s, %s, %s, %s\n" % (dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"])
 					print logStr,
-					fp.write(logStr)
+					fileH.write(logStr)
 				else:
-					fp.write("Bad DR Received, %s\n" % (time.time()))
+					fileH.write("Bad DR Received, %s\n" % (time.time()))
 			except socket.timeout:					# Exit on timeout
 				pass
 
 			except socket.error:				# I've Seen socket.error errors a few times. They seem to not break anything.
 										# Therefore, we just ignore them
-				print "wut"
-				fp.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
-				pass
+				print "pollUDP socket.error wut"
+				fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
 		# Turn off the data-record outputs
 		self.sendAndRecieveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)	
 
@@ -315,10 +313,9 @@ class GalilInterface:
 
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
 										# Therefore, we just ignore them
-				print "wut"
-				pass
+				print "pollUDP exiting socket.error wut"
 
-		fp.close()
+		fileH.close()
 
 	def __downloadFunctions(self):
 
@@ -374,7 +371,7 @@ class GalilInterface:
 			try:
 				if self.con.recv(256):				# and check for a response
 										# (there shouldn't be. You only get a response of there is an error)
-					raise ValueError, "Error downloading galil code"
+					raise ValueError("Error downloading galil code")
 			except:
 				pass
 
@@ -516,8 +513,7 @@ class GalilInterface:
 
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
 										# Therefore, we just ignore them
-				print "wut"
-				pass
+				print "recieveOnly socket.error wut"
 
 			if retString.find("?")+1:				# print error info if we recieve a error
 				print "Syntax Error - ",
@@ -566,7 +562,8 @@ class GalilInterface:
 			stripStr = positionStr.replace(" ", "")
 
 			for item in stripStr.split(","):
-				try:	retVals.append( int(item) )
+				try:	
+					retVals.append( int(item) )
 				except:
 					print positionStr
 					raise ValueError
@@ -585,7 +582,8 @@ class GalilInterface:
 			stripStr = velocityStr.replace(" ", "")
 
 			for item in stripStr.split(","):
-				try:	retVals.append( int(item) )
+				try:	
+					retVals.append( int(item) )
 				except:
 					print velocityStr
 					raise ValueError
@@ -748,14 +746,15 @@ class GalilInterface:
 				self.con.close()
 				self.con = None
 			except:
+				print "Failed to close?"
 				pass
 
 
 	def __del__(self):
 		self.close()
 
+def test():
 
-if __name__ == "__main__":
 
 	gInt = GalilInterface(ip = "192.168.1.250", fakeGalil=False, poll = False, resetGalil = True, unsol = False, download = False)
 
@@ -775,4 +774,7 @@ if __name__ == "__main__":
 	gInt.close(False)
 	sys.exit(0)
 
-#print con.recv(1)
+
+if __name__ == "__main__":
+	test()
+	

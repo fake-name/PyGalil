@@ -184,7 +184,7 @@ def _BV(inVal):
 def parseIBlock(iBlkStr):
 	ret = dict()
 	if len(iBlkStr) != iBlkSize:
-		raise ValueError, "Invalid passed string length"
+		raise ValueError("Invalid passed string length")
 	
 	# holy "one" liner unpacking, batman!
 	ret["SN"], \
@@ -201,7 +201,7 @@ def parseIBlock(iBlkStr):
 def parseAxisBlock(axBlkStr):
 	ret = dict()
 	if len(axBlkStr) != axBlkSize:
-		raise ValueError, "Invalid passed string length"
+		raise ValueError("Invalid passed string length")
 	ret["status"], ret["switches"], ret["stopCode"], ret["refPos"], ret["motorPos"], \
 	ret["posError"], ret["auxPos"], ret["vel"], ret["torque"], ret["analog"] = struct.unpack(axBlkParseStr, axBlkStr)
 	return ret
@@ -230,14 +230,13 @@ def parseDataRecord(drString):
 
 		ret["I"] = parseIBlock(drString[offsetInDat:(offsetInDat+iBlkSize)])
 		offsetInDat += iBlkSize
-		pass
 
 	if flags & _BV(8): 		# S Block (segmented moves in S-plane)
 		offsetInDat += stBlkSize
-		pass
+		
 	if flags & _BV(9): 		# T Block (segmented moves in T-plane)
 		offsetInDat += stBlkSize
-		pass
+		
 
 
 	if flags & _BV(0): 		# A Block (Axis A status block) is present

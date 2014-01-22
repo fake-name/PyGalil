@@ -1,13 +1,10 @@
-# To change this template, choose Tools | Templates
-# and open the template in the editor.
-
 
 class create_connection:
 	
 	def __init__(self, *args, **kwargs):
 		pass
 	
-	def settimeout(self, timeout):
+	def settimeout(self, timeoutError):
 		pass
 
 	def recv(self, bytes):
