@@ -144,8 +144,9 @@ SW	h axis analog					H block
 '''
 
 import struct
+from bitstring import BitStream, ConstBitStream
 
-iBlkParseStr 	= "<HBBBBBBBBBBBBBBBBBBBBBB"
+iBlkParseStr 	= "<H22B"
 iBlkSize 		= struct.calcsize(iBlkParseStr)
 
 stBlkParseStr	= "<HHl"
@@ -154,32 +155,17 @@ stBlkSize 		= struct.calcsize(stBlkParseStr)
 axBlkParseStr	= "<HBBlllllhh"
 axBlkSize 		= struct.calcsize(axBlkParseStr)
 
-def bitflip(intIn):		# HHHHHAAAAAAAACCCCCCCCCKKKKKKKKK!!!!(pocalypse)
-								#Swaps MSB With LSB, MSB-1 with LSB+1, etc..
-								#Basically goes from MSB to LSB order
-	out = 0
-
-	if intIn > 127:
-		out = out + 1
-	if intIn % 128 > 63:
-		out = out + 2
-	if intIn % 64 > 31:
-		out = out + 4
-	if intIn % 32 > 15:
-		out = out + 8
-	if intIn % 16 > 7:
-		out = out + 16
-	if  intIn % 8 > 3:
-		out = out + 32
-	if intIn % 4 > 1:
-		out = out + 64
-	if intIn % 2 == 1:
-		out = out + 128
-	return out
-
+def bitflip(intIn):
+	"""Flips the bits of intIn."""
+	out = BitStream("uint:8=%d" % intIn)
+	out.reverse()
+	return out.int
 
 def _BV(inVal):
 	return 1<<inVal
+	
+def axis(n):
+	return chr(65+axis)
 
 def parseIBlock(iBlkStr):
 	ret = dict()
@@ -237,40 +223,11 @@ def parseDataRecord(drString):
 	if flags & _BV(9): 		# T Block (segmented moves in T-plane)
 		offsetInDat += stBlkSize
 		
-
-
-	if flags & _BV(0): 		# A Block (Axis A status block) is present
-		ret["A"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(1): 		# B Block (Axis B status block) is present
-		ret["B"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(2): 		# C Block (Axis C status block) is present
-		ret["C"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(3): 		# D Block (Axis D status block) is present
-		ret["D"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(4): 		# E Block (Axis E status block) is present
-		ret["E"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(5): 		# F Block (Axis F status block) is present
-		ret["F"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(6): 		# G Block (Axis G status block) is present
-		ret["G"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
-	if flags & _BV(7): 		# H Block (Axis H status block) is present
-		ret["H"] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-		offsetInDat += axBlkSize
-
+	for i in range(8):
+		if flags & _BV(i): 	# Axis status block is present
+			ret[axis(i)] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
+			offsetInDat += axBlkSize
+			
 	return ret
 
 
