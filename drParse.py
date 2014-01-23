@@ -161,11 +161,11 @@ def bitflip(intIn):
 	out.reverse()
 	return out.int
 
-def _BV(inVal):
+def _BV(inVal):			# Common mnemomic for specifying a bit-value
 	return 1<<inVal
 	
 def axis(n):
-	return chr(65+axis)
+	return chr(65+n)
 
 def parseIBlock(iBlkStr):
 	ret = dict()
