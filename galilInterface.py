@@ -196,6 +196,9 @@ class GalilInterface():
 		# There is not particularly elegant way to get this. As such, we open a TCP socket connection
 		# and then look at the local connection information to figure out which interface we're using to 
 		# talk to the galil over TCP. It's probably safe to use that for UDP too
+
+		# it's either that, or try to call `route` using subprocess and parse that output, and that
+		# is a REALLY clumsly solution
 		con = socket.create_connection((self.ip, self.port ), 1)
 		if not globalConf.fakeGalil:
 			localIP = (con.getsockname()[0])
@@ -204,28 +207,28 @@ class GalilInterface():
 		con.shutdown(socket.SHUT_RDWR)
 		con.close()
 
-		UDP_PORT = 5005
-		UDP_ADDR_TUPLE = (localIP, UDP_PORT)
-		GALIL_UDP_ADDR_TUPLE = (self.ip, UDP_PORT)
+		_UDP_PORT = 5005
+		_UDP_ADDR_TUPLE = (localIP, _UDP_PORT)
+		_GALIL_UDP_ADDR_TUPLE = (self.ip, _UDP_PORT)
 
 		# UDP socket for DR (data record) logging from the galil
 		drSock = socket.socket(socket.AF_INET, # Internet
  		                    socket.SOCK_DGRAM, # UDP
  		                    socket.IPPROTO_UDP)
 
-		drSock.bind(UDP_ADDR_TUPLE)
+		drSock.bind(_UDP_ADDR_TUPLE)
 
 		if globalConf.fakeGalil:
 			return
 
 		print "Flushing UDP connection",
-		self.flushBufUDP(drSock, GALIL_UDP_ADDR_TUPLE)
+		self.flushBufUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
 		print "Done"
 		ret = ""
 		# It seems that occationally the initial response from the galil on a UDP socket
 		# is garbage. Therefore, we loop until we see a proper response to the initial query
 		while not ret.find("IH") + 1:
-			ret =  self.sendAndRecieveUDP("WH;", drSock, GALIL_UDP_ADDR_TUPLE)
+			ret =  self.sendAndRecieveUDP("WH;", drSock, _GALIL_UDP_ADDR_TUPLE)
 			if not ret.find("IH") + 1:
 				print "Bad return value -", ret
 
@@ -235,7 +238,7 @@ class GalilInterface():
 
 		print "UDP Handle: \"%s\", e.g. handle %d" % (ret, self.udpHandleNumber)
 		
-		ret =  self.sendAndRecieveUDP("QZ;", drSock, GALIL_UDP_ADDR_TUPLE)
+		ret =  self.sendAndRecieveUDP("QZ;", drSock, _GALIL_UDP_ADDR_TUPLE)
 		self.infoTopology = ret
 		
 		# receive until we start timing out.
@@ -244,7 +247,7 @@ class GalilInterface():
 			print "Ret: \"", tmp, "\""
 			tmp = self.receiveUDP(drSock)
 
-		drSock.sendto("DR 103,%s\r\n" % self.udpHandleNumber, GALIL_UDP_ADDR_TUPLE)
+		drSock.sendto("DR 103,%s\r\n" % self.udpHandleNumber, _GALIL_UDP_ADDR_TUPLE)
 
 		#drSock.settimeout(1)
 		#time.sleep(1)
@@ -254,7 +257,7 @@ class GalilInterface():
 		#print data, addr
 		print "UDP Init done"
 
-		self.startPollingUDP(drSock, GALIL_UDP_ADDR_TUPLE)
+		self.startPollingUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
 
 
 		#self.startPollingUDP()
@@ -278,6 +281,9 @@ class GalilInterface():
 				#print "received", len(dat), ip, 
 				dr = PyGalil.drParse.parseDataRecord(dat)
 
+				# TODO: Refactor some of this decoding mess.
+				# this needs to be converted to proper decoding in the drParse module.
+				# Blurgh
 				if dr:
 					self.udpPackets += 1
 					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
@@ -491,13 +497,14 @@ class GalilInterface():
 	def checkAxis(self, axis):						# Check if an axis number is valid
 		if (axis + 1) > self.numAxis:
 			print axis
-			raise ValueError, "Invalid Axis"
+			raise ValueError("Invalid Axis")
 
 
 	def sendOnly(self, cmdStr, debug = True):				# Send a command string without listening for a response
 		cmdStr = cmdStr + "\r"						# append the line terminator the galil wants
 
-		if debug: print "Sent Command - \"", cmdStr.rstrip().strip(), "\""
+		if debug: 
+			print "Sent Command - \"", cmdStr.rstrip().strip(), "\""
 
 		self.con.sendall(cmdStr)
 
@@ -508,7 +515,7 @@ class GalilInterface():
 										# ":" - Indicates the previous command was successful
 										# "?" - Indicates there was an error in the previous command (either syntax or system)
 
-
+		errors = 0
 
 		retString = ""
 		while not retString.find(":")+1:				# Galil return strings end with a colon (":"). We loop on the socket untill we either see a colon, or time out
@@ -521,15 +528,18 @@ class GalilInterface():
 				break
 
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
-										# Therefore, we just ignore them
+													# Therefore, we just ignore them
 				print "recieveOnly socket.error wut"
-
+				errors += 1
 			if retString.find("?")+1:				# print error info if we recieve a error
 				print "Syntax Error - ",
 				print "Returned Value:", retString
 				print "Error Code:"
 				print self.sendAndRecieve("TC1")		# "TC1" - This queries the galil for what the previous error was caused by
 				break
+
+			if errors > 100:
+				raise ValueError("Socket is returning garbage!")
 		return retString
 
 	def sendAndRecieve(self, cmdStr, debug = True):
@@ -697,6 +707,9 @@ class GalilInterface():
 		responseStr = self.sendAndRecieve( command )
 
 		return responseStr
+
+	def checkMotorPower(self, axis = 0):
+		return "0.0000" == self.sendAndRecieve("MG _MO%s" % self.__axisIntToLetter(axis))
 
 	def homeAxis(self, axis):
 
