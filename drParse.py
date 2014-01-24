@@ -157,9 +157,12 @@ axBlkSize 		= struct.calcsize(axBlkParseStr)
 
 def bitflip(intIn):
 	"""Flips the bits of intIn."""
-	out = BitStream("uint:8=%d" % intIn)
-	out.reverse()
-	return out.int
+	ret = 0
+	for x in range(8):
+		if intIn & _BV(x):
+			ret |= _BV(7-x)
+
+	return ret
 
 def _BV(inVal):			# Common mnemomic for specifying a bit-value
 	return 1<<inVal
@@ -172,13 +175,18 @@ def parseIBlock(iBlkStr):
 	if len(iBlkStr) != iBlkSize:
 		raise ValueError("Invalid passed string length")
 	
-	# holy "one" liner unpacking, batman!
-	ret["SN"], \
-	ret["GI0"], ret["GI1"], ret["GI2"], ret["GI3"], ret["GI4"], \
-	ret["GI5"], ret["GI6"], ret["GI7"], ret["GI8"], ret["GI9"], \
-	ret["GO0"], ret["GO1"], ret["GO2"], ret["GO3"], ret["GO4"], \
-	ret["GO5"], ret["GO6"], ret["GO7"], ret["GO8"], ret["GO9"],\
-	ret["EC"], ret["GS"] = struct.unpack(iBlkParseStr, iBlkStr)
+	#This is going to need considerable rework in the near future to properly decode the data in the GI bytes anyways (it's packed
+	# in the hardware). I need to extract the unpacking from the hardware first (blurgh).
+	keys = ["SN",
+	"GI0", "GI1", "GI2", "GI3", "GI4",
+	"GI5", "GI6", "GI7", "GI8", "GI9",
+	"GO0", "GO1", "GO2", "GO3", "GO4",
+	"GO5", "GO6", "GO7", "GO8", "GO9",
+	"EC", "GS"]
+
+	vals = struct.unpack(iBlkParseStr, iBlkStr)
+
+	ret = dict(zip(keys, vals))  # Don't like this, but I have no good reason *why*, so what the fuck
 
 	ret["GI8"] = bitflip(ret["GI8"])	# GI8 is reversed in the hardware. We need to flip it back to
 										# make it valid
@@ -188,8 +196,14 @@ def parseAxisBlock(axBlkStr):
 	ret = dict()
 	if len(axBlkStr) != axBlkSize:
 		raise ValueError("Invalid passed string length")
-	ret["status"], ret["switches"], ret["stopCode"], ret["refPos"], ret["motorPos"], \
-	ret["posError"], ret["auxPos"], ret["vel"], ret["torque"], ret["analog"] = struct.unpack(axBlkParseStr, axBlkStr)
+
+	keys = ["status", "switches", "stopCode", "refPos", "motorPos",
+	"posError", "auxPos", "vel", "torque", "analog"]
+
+	vals = struct.unpack(axBlkParseStr, axBlkStr)
+
+	ret = dict(zip(keys, vals))
+
 	return ret
 
 
@@ -245,4 +259,13 @@ def getMsTOWwMasking():		# Get the current millisecond time of week
 
 if __name__ == "__main__":
 	print "DERP"
-	print getMsTOWwMasking()
+	#print getMsTOWwMasking()
+
+	print bitflip(1)
+	print bitflip(2)
+	print bitflip(4)
+	print bitflip(8)
+	print bitflip(16)
+	print bitflip(32)
+	print bitflip(64)
+	print bitflip(128)
