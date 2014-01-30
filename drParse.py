@@ -152,7 +152,7 @@ iBlkSize 		= struct.calcsize(iBlkParseStr)
 stBlkParseStr	= "<HHl"
 stBlkSize 		= struct.calcsize(stBlkParseStr)
 
-axBlkParseStr	= "<HBBlllllhh"
+axBlkParseStr	= "<xxBBlllllhh"
 axBlkSize 		= struct.calcsize(axBlkParseStr)
 
 def bitflip(intIn):
@@ -199,8 +199,18 @@ def parseAxisBlock(axBlkStr):
 
 	keys = ["status", "switches", "stopCode", "refPos", "motorPos",
 	"posError", "auxPos", "vel", "torque", "analog"]
+	
+	statusKeys = ["moving", "motionMode1", "motionMode1", "findingEdge", 
+				  "homing", "homeP1Done", "homeP2Done", "coordMotion",
+				  "movingNeg", "contourMode", "slewingMode", "stopping", 
+				  "finalDecel", "latchArmed", "offOnErrArmed", "motorOff"]
 
-	vals = struct.unpack(axBlkParseStr, axBlkStr)
+	# The fucking galil is little endian, so [:2] splits off the segment of the string we want, and [::-1] reverses it
+	statusBs = ConstBitStream(bytes=axBlkStr[:2][::-1])  
+	statusVals = statusBs.readlist(["uint:1"]*16)  # Status is 16 boolean values packed into a uint_16
+	zipped = zip(statusKeys, statusVals)
+	vals = [dict(zipped)]
+	vals.extend(struct.unpack(axBlkParseStr, axBlkStr))
 
 	ret = dict(zip(keys, vals))
 

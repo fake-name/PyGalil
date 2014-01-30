@@ -16,7 +16,7 @@ else:
 
 import sys
 
-
+import math
 import PyGalil.drParse
 
 import os.path
@@ -34,9 +34,10 @@ class GalilInterface():
 	numAxis		=	2		# the DMC-2120 has two axes
 	running		=	True
 
-	pos		= [0,0,0,0,0,0,0,0,0]
-	vel		= [0,0,0,0,0,0,0,0,0]
+	pos			= [0,0,0,0,0,0,0,0,0]
+	vel			= [0,0,0,0,0,0,0,0,0]
 	inMot		= [0,0,0,0,0,0,0,0,0]
+	motOn		= [0,0,0,0,0,0,0,0,0]
 
 	udpPackets = 0
 	doUDPFileLog = False
@@ -223,10 +224,11 @@ class GalilInterface():
 
 		print "Flushing UDP connection",
 		self.flushBufUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
-		print "Done"
+		print "Connection Flushed"
 		ret = ""
 		# It seems that occationally the initial response from the galil on a UDP socket
 		# is garbage. Therefore, we loop until we see a proper response to the initial query
+		print "Waiting for a valid packet"
 		while not ret.find("IH") + 1:
 			ret =  self.sendAndRecieveUDP("WH;", drSock, _GALIL_UDP_ADDR_TUPLE)
 			if not ret.find("IH") + 1:
@@ -293,6 +295,24 @@ class GalilInterface():
 					logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
 					#logStr = "DR Received, %s, %s, %s, %s\n" % (dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"])
 					#print logStr,
+
+					#print dr
+
+					# Axis letter in the DR dictionary, and their corresonding offset 
+					# in the self.pos/self.vel/self.inMot arrays
+					axes = [("A", 0),
+							("B", 1),
+							("C", 2),
+							("D", 3)]
+
+					for axis, offset in axes:
+						if axis in dr:
+							#print dr[axis]
+							self.pos[offset]    = dr[axis]["motorPos"]
+							self.vel[offset]    = dr[axis]["vel"]
+							self.inMot[offset]  = dr[axis]["status"]["moving"]
+							self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
+
 					if self.doUDPFileLog:
 						fileH.write(logStr)
 				else:
@@ -315,9 +335,9 @@ class GalilInterface():
 		# Never mind, it's documented, just in more recent docs
 		self.sendAndRecieveUDP("IHS=-3;\r\n", udpSock, galilAddrTup)	# IHS=-3 means "close the socket this command is received on"
 
-
-		for x in range(5):
-			print "Waiting for any remaining packets, ", 5-x
+		pktFlushTime = 3
+		for x in range(pktFlushTime):
+			print "Waiting for any remaining packets, ", pktFlushTime-x
 			
 			try:
 				dat, ip = udpSock.recvfrom(1024)
@@ -327,7 +347,8 @@ class GalilInterface():
 				pass
 
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
-										# Therefore, we just ignore them
+													# Therefore, we just ignore them
+
 				print "pollUDP exiting socket.error wut"
 		if self.doUDPFileLog:
 			fileH.close()
@@ -399,8 +420,10 @@ class GalilInterface():
 
 		print "Sent"
 		try:
-			print "Recieved - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")			# Check status return code from the download operaton
-										# It should be two colons ("::"). Should probably check that
+			# Check status return code from the download operaton
+			# It should be two colons ("::"). Should probably check for that.
+			print "Recieved - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")			
+
 		except:
 			print "Galil Timed Out"
 			traceback.print_exc(6)
@@ -656,8 +679,7 @@ class GalilInterface():
 
 	def beginMotion(self, axis = None):
 		if axis != None:
-			command = "BG %s" % chr(65+axis)			# Chr converts to an axis letter (e.g. A, B, C, D, etc...)
-										# The galil inanely wants an axis letter here, instead of a number
+			command = "BG %s" % self.__axisIntToLetter(axis)
 		else:
 			command = "BG"
 
@@ -666,8 +688,7 @@ class GalilInterface():
 		return responseStr
 
 	def inMotion(self, axis):
-		command = "MG _BG%s " % chr(65+axis)				# Chr converts to an axis letter (e.g. A, B, C, D, etc...)
-										# The galil inanely wants an axis letter here, instead of a number
+		command = "MG _BG%s " % self.__axisIntToLetter(axis)
 
 		responseStr = self.sendAndRecieve( command , debug = False)
 
@@ -677,8 +698,7 @@ class GalilInterface():
 
 	def endMotion(self, axis = None):
 		if axis != None:
-			command = "ST %s" % self.__axisIntToLetter(axis)	# Chr converts to an axis letter (e.g. A, B, C, D, etc...)
-										# The galil inanely wants an axis letter here, instead of a number
+			command = "ST %s" % self.__axisIntToLetter(axis)	
 		else:
 			command = "ST"
 
@@ -688,8 +708,7 @@ class GalilInterface():
 
 	def motorOn(self, axis = None):
 		if axis != None:
-			command = "SH %s" % self.__axisIntToLetter(axis)	# Chr converts to an axis letter (e.g. A, B, C, D, etc...)
-										# The galil inanely wants an axis letter here, instead of a number
+			command = "SH %s" % self.__axisIntToLetter(axis)	
 		else:
 			command = "SH"
 
@@ -699,8 +718,7 @@ class GalilInterface():
 
 	def motorOff(self, axis = None):
 		if axis != None:
-			command = "MO %s" % self.__axisIntToLetter(axis)	# Chr converts to an axis letter (e.g. A, B, C, D, etc...)
-										# The galil inanely wants an axis letter here, instead of a number
+			command = "MO %s" % self.__axisIntToLetter(axis)	
 		else:
 			command = "MO"
 
@@ -710,6 +728,41 @@ class GalilInterface():
 
 	def checkMotorPower(self, axis = 0):
 		return "0.0000" == self.sendAndRecieve("MG _MO%s" % self.__axisIntToLetter(axis))
+
+
+	#THIS THING
+	#It needs to be changed, for the sake of consistency.
+	#I feel like it is something that should be moved,
+	#and that this library should be only the lowest level
+	#primatives for interacting with the galil.
+	def scan(self, x_i, degrees, period, cycles):
+		print "Scanning. ", "x_i = ", x_i, "degrees = ", degrees, "period = ", period, "cycles = ", cycles
+		# max_accel = max_deccel = 1e6
+		#initial_angle = 0
+		self.motorOn(x_i) #make sure a motor is on
+		frequency = 1.0/period
+		#convert degrees to an amplitude in encoder counts
+		frequency = 1.0/period
+		radius = int(degrees/9.0*12800)
+		axis_letter = self.__axisIntToLetter(x_i)
+		code = '''VM{0}N;
+				VA {1};
+				VD {1};
+				VS {2};
+				CR {3}, 0, {4};
+				VE;
+				BGS'''
+		code = code.format(axis_letter,
+						   1e6, 								# Max accel and deccel
+						   int(2*math.pi*radius*frequency),		# Vector speec
+						   radius,								# Circular Segment
+						   360*cycles)
+		self.flushSocketRecvBuf(self.con)
+		for line in code.split(';'):
+			line = line.rstrip().lstrip() 		# Clean up the tabs from the line since it's got newlines in it
+			self.sendOnly(line+';')
+			time.sleep(0.03)
+		print "Receiving:", self.recieveOnly(self.con)
 
 	def homeAxis(self, axis):
 
@@ -773,14 +826,13 @@ class GalilInterface():
 		self.close()
 
 def test():
+	print "RUNNING GALIL CONNECTION TESTS"
 
-
-	gInt = GalilInterface(ip = "192.168.1.250", fakeGalil=False, poll = False, resetGalil = True, unsol = False, download = False)
+	gInt = GalilInterface(ip = "10.1.2.250", poll = False, resetGalil = True, unsol = False, download = False)
 
 
 	time.sleep(1)
 	print "done"
-	gInt.initUDPMessageSocket()
 	#gInt.motorOn()
 	#gInt.executeFunction("MAIN")
 	
