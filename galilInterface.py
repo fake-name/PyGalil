@@ -735,28 +735,36 @@ class GalilInterface():
 	#I feel like it is something that should be moved,
 	#and that this library should be only the lowest level
 	#primatives for interacting with the galil.
-	def scan(self, x_i, degrees, period, cycles):
-		print "Scanning. ", "x_i = ", x_i, "degrees = ", degrees, "period = ", period, "cycles = ", cycles
-		# max_accel = max_deccel = 1e6
+	def scan(self, x_i, encoderTics, period, cycles):
+		print "Scanning. ", "x_i = ", x_i, "encoderTics = ", encoderTics, "period = ", period, "cycles = ", cycles
+		max_accel = max_deccel = 1e6
 		#initial_angle = 0
-		self.motorOn(x_i) #make sure a motor is on
+		# self.motorOn(x_i) #make sure a motor is on
 		frequency = 1.0/period
-		#convert degrees to an amplitude in encoder counts
+		#convert encoderTics to an amplitude in encoder counts
 		frequency = 1.0/period
-		radius = int(degrees/9.0*12800)
+
+		# NOTE: Assumes axis 0 is azimuth, 1 is elevation
+		# Could be an issue
 		axis_letter = self.__axisIntToLetter(x_i)
-		code = '''VM{0}N;
-				VA {1};
-				VD {1};
-				VS {2};
-				CR {3}, 0, {4};
-				VE;
-				BGS'''
+
+		
+		# This generates sinusoidial motion.
+
+		code = 'VM {0}N;'         # VM {axis}N; = N indicates vector mode for a single real axis
+		code += 'VA {1};'         # Vector Acceleration
+		code += 'VD {1};'         # And decelleration
+		code += 'VS {2};'         # Define vector speed of
+		code += 'CR {3}, 0, {4};' # Vector mode specifies a 2-dimensional arc segment. CR {encoder tics to traverse}, {start angle}, {x/360 = number of complete cycles to traverse)
+		code += 'VE;'             # End vector specification sequence
+		code += 'BG S'            # Begin vector motion move
+		# Note. Trailing semocolon is inserted automatically
+
 		code = code.format(axis_letter,
-						   1e6, 								# Max accel and deccel
-						   int(2*math.pi*radius*frequency),		# Vector speec
-						   radius,								# Circular Segment
-						   360*cycles)
+						   int(max_accel), 							# Max accel and deccel
+						   int(2*math.pi*encoderTics*frequency),	# Vector speed
+						   int(encoderTics/2.0),					# Circular Segment. Input is in diameter, so / 2
+						   int(360*cycles))
 		self.flushSocketRecvBuf(self.con)
 		for line in code.split(';'):
 			line = line.rstrip().lstrip() 		# Clean up the tabs from the line since it's got newlines in it
