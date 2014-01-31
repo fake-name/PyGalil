@@ -740,12 +740,9 @@ class GalilInterface():
 		max_accel = max_deccel = 1e6
 		#initial_angle = 0
 		# self.motorOn(x_i) #make sure a motor is on
-		frequency = 1.0/period
-		#convert encoderTics to an amplitude in encoder counts
+		
 		frequency = 1.0/period
 
-		# NOTE: Assumes axis 0 is azimuth, 1 is elevation
-		# Could be an issue
 		axis_letter = self.__axisIntToLetter(x_i)
 
 		
