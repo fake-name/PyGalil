@@ -1,13 +1,29 @@
 
-class create_connection:
-	
-	def __init__(self, *args, **kwargs):
-		pass
-	
-	def settimeout(self, timeoutError):
-		pass
+DEFAULT_TIMEOUT = 1
+import time
 
-	def recv(self, bytes):
+class create_connection:
+
+	def __init__(self, *args, **kwargs):
+		if "timeout" in kwargs:
+			if timeout:
+				self.timeout = float(kwargs["timeout"])
+			else:
+				self.timeout = None
+		else:
+			self.timeout = DEFAULT_TIMEOUT
+
+
+	def settimeout(self, timeoutError):
+		if timeout:
+			self.timeout = float(timeoutError)
+		else:
+			self.timeout = None
+
+	def recv(self, dummy_bytes):
+		if self.timeout:
+			time.sleep(self.timeout)
+
 		return ":"
 
 	def shutdown(self, args):
@@ -18,7 +34,7 @@ class create_connection:
 
 	def sendall(self, data):
 		pass
-		
+
 	def __getattr__(self, name):
 		def method(*args):
 			print("tried to handle unknown method " + name)
