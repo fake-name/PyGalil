@@ -46,12 +46,18 @@ class GalilInterface():
 	udpInBuffer = ""
 
 	threads = []
+	haveGpsLock = False
 
 	def __axisIntToLetter(self, axis):
 		return chr(65+axis)
 
 	def __axisLetterToInt(self, axis):
 		return ord(axis[-1])-65
+
+	@property
+	def haveLock(self):
+		return self.haveGpsLock
+
 
 	def __init__(self, ip, port = 23, poll = False, resetGalil = False, download = True, unsol = True, dr = True):
 
@@ -69,7 +75,7 @@ class GalilInterface():
 		if resetGalil:
 			print "Resetting Galil"
 			self.resetGalil(download)
-			
+
 
 
 		self.sendOnly("IHT=-3;")	# Close ALL THE (other) SOCKETS
@@ -87,7 +93,7 @@ class GalilInterface():
 			self.initUDPMessageSocket()
 
 	def __initUnsolicitedMessageSocket(self):
-		# The reccomended way for handling both solicited and unsolicited messages from the galil is to use two sockets. One socket is for normal 
+		# The reccomended way for handling both solicited and unsolicited messages from the galil is to use two sockets. One socket is for normal
 		# comms, and the other is configured for handling the unsolicited messages (e.g. interrupt messages, etc...)
 
 
@@ -97,10 +103,10 @@ class GalilInterface():
 		self.recieveOnly(self.unsolCon)
 
 		# I *think* the response garbling I was seeing was CW being set. This causes the MSB of all ascii characters in unsolicited
-		# messages to be set. I don't know what the default setting is, though. 
+		# messages to be set. I don't know what the default setting is, though.
 		self.unsolCon.sendall("CW 2;\r\n")
 		self.recieveOnly(self.unsolCon)
-		
+
 		self.startPollingUnsol()
 
 
@@ -112,11 +118,11 @@ class GalilInterface():
 
 
 	def pollUnsol(self):
-		
+
 		retString = ""
 		while self.running:
 
-			
+
 			try:
 				retString += self.unsolCon.recv(1)
 
@@ -127,15 +133,15 @@ class GalilInterface():
 										# Therefore, we just ignore them
 				print "socket.error - wut"
 
-			if retString.find("\r\n")+1:				# 
+			if retString.find("\r\n")+1:				#
 				message, retString = retString.split("\r\n", 1)
 				print "Received message - ", message
-				
+
 				if LOG_TIMESTAMPS:
 					if message.find("Input Timestamp") + 1:
 						# for some bizarre reason, the galil returns timestamps with four trailing zeros (e.g. xxx.0000)
 						# The timestamps are ALWAYS just an integer
-						# Anyways, the python int() function can't handle strings with a decimal, so we split off the 
+						# Anyways, the python int() function can't handle strings with a decimal, so we split off the
 						# empty fractional digits
 						sampleTime = int(message.split()[-1].split(".")[0])
 						delta = sampleTime - self.oldTime
@@ -150,7 +156,7 @@ class GalilInterface():
 		self.sendAndRecieveUDP("TP;", socketConnection, galilAddrTup)
 		for cnt in range(2):
 			self.receiveUDP(socketConnection)
-	
+
 		self.udpInBuffer = ""
 		self.flushSocketRecvBuf(socketConnection)
 
@@ -164,7 +170,7 @@ class GalilInterface():
 			except:
 				pass
 			#print self.udpInBuffer
-			
+
 			if self.udpInBuffer.find(":")+1:
 				ret, self.udpInBuffer = self.udpInBuffer.split(":", 1)
 				ret = ret.rstrip().lstrip()
@@ -192,10 +198,10 @@ class GalilInterface():
 	def initUDPMessageSocket(self):
 
 		print "Opening UDP Socket"
-		
+
 		# We need to know the local address to bind to to receive UDP messages from the galil
 		# There is not particularly elegant way to get this. As such, we open a TCP socket connection
-		# and then look at the local connection information to figure out which interface we're using to 
+		# and then look at the local connection information to figure out which interface we're using to
 		# talk to the galil over TCP. It's probably safe to use that for UDP too
 
 		# it's either that, or try to call `route` using subprocess and parse that output, and that
@@ -239,10 +245,10 @@ class GalilInterface():
 			raise ValueError("Invalid handle number. Garbled data on init?")
 
 		print "UDP Handle: \"%s\", e.g. handle %d" % (ret, self.udpHandleNumber)
-		
+
 		ret =  self.sendAndRecieveUDP("QZ;", drSock, _GALIL_UDP_ADDR_TUPLE)
 		self.infoTopology = ret
-		
+
 		# receive until we start timing out.
 		tmp = self.receiveUDP(drSock)
 		while tmp:
@@ -254,8 +260,8 @@ class GalilInterface():
 		#drSock.settimeout(1)
 		#time.sleep(1)
 
-		
-		
+
+
 		#print data, addr
 		print "UDP Init done"
 
@@ -277,10 +283,10 @@ class GalilInterface():
 			fileH = open("posvelDR.txt", "a")
 		while self.running:
 
-			
+
 			try:
 				dat, ip = udpSock.recvfrom(1024)
-				#print "received", len(dat), ip, 
+				#print "received", len(dat), ip,
 				dr = PyGalil.drParse.parseDataRecord(dat)
 
 				# TODO: Refactor some of this decoding mess.
@@ -289,16 +295,29 @@ class GalilInterface():
 				if dr:
 					self.udpPackets += 1
 					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
+
+
+					# This may asplode on 32 bit platforms, or anywhere using 32 bit signed ints. Not sure how python
+					# Manages that sort of thing.
+					# 1 << 31 is 0x80_00_00_00, or 0b1000_0000_0000_0000_0000_0000_0000_0000
+					# Also known as the sign bit for 32 bit signed ints.
+					# However, in this case, it's being used as the "have GPS lock" status flag
+					if sampleTime > (1 << 31):
+						self.haveGpsLock = True
+
+						# Using // for divide because python 3 compatibility will be a thing, and I want to make it explicit I want
+						# a modulo division
+						sampleTime = sampleTime // (1 << 31)
+					else:
+						self.haveGpsLock = False
+
 					#print dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"] & 0x1F
-					curTOW = PyGalil.drParse.getMsTOWwMasking()
-					towErr = curTOW - sampleTime
-					logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
 					#logStr = "DR Received, %s, %s, %s, %s\n" % (dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"])
 					#print logStr,
 
 					#print dr
 
-					# Axis letter in the DR dictionary, and their corresonding offset 
+					# Axis letter in the DR dictionary, and their corresonding offset
 					# in the self.pos/self.vel/self.inMot arrays
 					axes = [("A", 0),
 							("B", 1),
@@ -314,6 +333,9 @@ class GalilInterface():
 							self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
 
 					if self.doUDPFileLog:
+						curTOW = PyGalil.drParse.getMsTOWwMasking()
+						towErr = curTOW - sampleTime
+						logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
 						fileH.write(logStr)
 				else:
 					if self.doUDPFileLog:
@@ -327,18 +349,18 @@ class GalilInterface():
 				if self.doUDPFileLog:
 					fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
 		# Turn off the data-record outputs
-		self.sendAndRecieveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)	
+		self.sendAndRecieveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)
 
 		# Tell the galil to close the UDP socket
 		# This *seems* to work, though supposedly the IH command only works on sockets the galil opens as master.
-		# Undocumented features, AHOY!	
+		# Undocumented features, AHOY!
 		# Never mind, it's documented, just in more recent docs
 		self.sendAndRecieveUDP("IHS=-3;\r\n", udpSock, galilAddrTup)	# IHS=-3 means "close the socket this command is received on"
 
 		pktFlushTime = 3
 		for x in range(pktFlushTime):
 			print "Waiting for any remaining packets, ", pktFlushTime-x
-			
+
 			try:
 				dat, ip = udpSock.recvfrom(1024)
 				#print "received", len(dat), ip
@@ -422,7 +444,7 @@ class GalilInterface():
 		try:
 			# Check status return code from the download operaton
 			# It should be two colons ("::"). Should probably check for that.
-			print "Recieved - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")			
+			print "Recieved - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")
 
 		except:
 			print "Galil Timed Out"
@@ -467,7 +489,7 @@ class GalilInterface():
 		fp = open("posvelpol.txt", "a")
 		while self.running:
 			self.flushSocketRecvBuf(self.polCon)
-				
+
 			try:
 				# Horrible one-liners of DOOOOOOOMMMMM
 				#
@@ -526,7 +548,7 @@ class GalilInterface():
 	def sendOnly(self, cmdStr, debug = True):				# Send a command string without listening for a response
 		cmdStr = cmdStr + "\r"						# append the line terminator the galil wants
 
-		if debug: 
+		if debug:
 			print "Sent Command - \"", cmdStr.rstrip().strip(), "\""
 
 		self.con.sendall(cmdStr)
@@ -604,7 +626,7 @@ class GalilInterface():
 			stripStr = positionStr.replace(" ", "")
 
 			for item in stripStr.split(","):
-				try:	
+				try:
 					retVals.append( int(item) )
 				except:
 					print positionStr
@@ -624,7 +646,7 @@ class GalilInterface():
 			stripStr = velocityStr.replace(" ", "")
 
 			for item in stripStr.split(","):
-				try:	
+				try:
 					retVals.append( int(item) )
 				except:
 					print velocityStr
@@ -698,7 +720,7 @@ class GalilInterface():
 
 	def endMotion(self, axis = None):
 		if axis != None:
-			command = "ST %s" % self.__axisIntToLetter(axis)	
+			command = "ST %s" % self.__axisIntToLetter(axis)
 		else:
 			command = "ST"
 
@@ -708,7 +730,7 @@ class GalilInterface():
 
 	def motorOn(self, axis = None):
 		if axis != None:
-			command = "SH %s" % self.__axisIntToLetter(axis)	
+			command = "SH %s" % self.__axisIntToLetter(axis)
 		else:
 			command = "SH"
 
@@ -718,7 +740,7 @@ class GalilInterface():
 
 	def motorOff(self, axis = None):
 		if axis != None:
-			command = "MO %s" % self.__axisIntToLetter(axis)	
+			command = "MO %s" % self.__axisIntToLetter(axis)
 		else:
 			command = "MO"
 
@@ -740,12 +762,12 @@ class GalilInterface():
 		max_accel = max_deccel = 1e6
 		#initial_angle = 0
 		# self.motorOn(x_i) #make sure a motor is on
-		
+
 		frequency = 1.0/period
 
 		axis_letter = self.__axisIntToLetter(x_i)
 
-		
+
 		# This generates sinusoidial motion.
 
 		code = 'VM {0}N;'         # VM {axis}N; = N indicates vector mode for a single real axis
@@ -786,7 +808,7 @@ class GalilInterface():
 
 		return responseStr
 
-	def resetGalil(self, download = True):	
+	def resetGalil(self, download = True):
 				#We re-download the galilcode on reset, since resetting clears the function memory
 				# if you don't want to re-download the functions, pass download = false
 
@@ -804,7 +826,7 @@ class GalilInterface():
 										# connection gracefully
 
 		if self.running:			# This can be called both manually and by __del__
-			self.running = False 	# Therefore, we look at self.running to determine if we need to stop the threads 
+			self.running = False 	# Therefore, we look at self.running to determine if we need to stop the threads
 			for thread in self.threads:			# Stop the various threads
 				if thread:
 					print "Stopping thread:", thread
@@ -840,7 +862,7 @@ def test():
 	print "done"
 	#gInt.motorOn()
 	#gInt.executeFunction("MAIN")
-	
+
 	try:
 		while 1:
 			time.sleep(10)
@@ -853,4 +875,3 @@ def test():
 
 if __name__ == "__main__":
 	test()
-	
