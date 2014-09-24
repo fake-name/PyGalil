@@ -100,12 +100,12 @@ class GalilInterface():
 		self.unsolCon = socket.create_connection((self.ip, self.port+1 ), CONF_TIMEOUT)
 
 		self.unsolCon.sendall("CF I;\r\n")
-		self.recieveOnly(self.unsolCon)
+		self.receiveOnly(self.unsolCon)
 
 		# I *think* the response garbling I was seeing was CW being set. This causes the MSB of all ascii characters in unsolicited
 		# messages to be set. I don't know what the default setting is, though.
 		self.unsolCon.sendall("CW 2;\r\n")
-		self.recieveOnly(self.unsolCon)
+		self.receiveOnly(self.unsolCon)
 
 		self.startPollingUnsol()
 
@@ -151,16 +151,16 @@ class GalilInterface():
 							fileP.write("Timestamp, %s, %s \n" % (sampleTime, delta))
 
 
-	def flushBufUDP(self, socketConnection, galilAddrTup):
+	def _flushBufUDP(self, socketConnection, galilAddrTup):
 
-		self.sendAndRecieveUDP("TP;", socketConnection, galilAddrTup)
+		self._sendAndReceiveUDP("TP;", socketConnection, galilAddrTup)
 		for cnt in range(2):
-			self.receiveUDP(socketConnection)
+			self._receiveUDP(socketConnection)
 
 		self.udpInBuffer = ""
 		self.flushSocketRecvBuf(socketConnection)
 
-	def receiveUDP(self, socketConnection):
+	def _receiveUDP(self, socketConnection):
 		startTime = time.time()
 		ret = ""
 		while time.time() < (startTime + CONF_TIMEOUT):
@@ -182,7 +182,7 @@ class GalilInterface():
 
 
 
-	def sendAndRecieveUDP(self, cmdStr, socketConnection, addrTuple):
+	def _sendAndReceiveUDP(self, cmdStr, socketConnection, addrTuple):
 		#First, we need to clear the input buffer, because we want to get rid of any previous strings
 		self.flushSocketRecvBuf(self.con)
 
@@ -192,7 +192,7 @@ class GalilInterface():
 		time.sleep(0.2)				# give some time for the galil to respond
 
 		socketConnection.settimeout(CONF_TIMEOUT)
-		return self.receiveUDP(socketConnection)
+		return self._receiveUDP(socketConnection)
 
 
 	def initUDPMessageSocket(self):
@@ -229,14 +229,14 @@ class GalilInterface():
 			return
 
 		print "Flushing UDP connection",
-		self.flushBufUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
+		self._flushBufUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
 		print "Connection Flushed"
 		ret = ""
 		# It seems that occationally the initial response from the galil on a UDP socket
 		# is garbage. Therefore, we loop until we see a proper response to the initial query
 		print "Waiting for a valid packet"
 		while not ret.find("IH") + 1:
-			ret =  self.sendAndRecieveUDP("WH;", drSock, _GALIL_UDP_ADDR_TUPLE)
+			ret =  self._sendAndReceiveUDP("WH;", drSock, _GALIL_UDP_ADDR_TUPLE)
 			if not ret.find("IH") + 1:
 				print "Bad return value -", ret
 
@@ -246,14 +246,14 @@ class GalilInterface():
 
 		print "UDP Handle: \"%s\", e.g. handle %d" % (ret, self.udpHandleNumber)
 
-		ret =  self.sendAndRecieveUDP("QZ;", drSock, _GALIL_UDP_ADDR_TUPLE)
+		ret =  self._sendAndReceiveUDP("QZ;", drSock, _GALIL_UDP_ADDR_TUPLE)
 		self.infoTopology = ret
 
 		# receive until we start timing out.
-		tmp = self.receiveUDP(drSock)
+		tmp = self._receiveUDP(drSock)
 		while tmp:
 			print "Ret: \"", tmp, "\""
-			tmp = self.receiveUDP(drSock)
+			tmp = self._receiveUDP(drSock)
 
 		drSock.sendto("DR 103,%s\r\n" % self.udpHandleNumber, _GALIL_UDP_ADDR_TUPLE)
 
@@ -265,20 +265,20 @@ class GalilInterface():
 		#print data, addr
 		print "UDP Init done"
 
-		self.startPollingUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
+		self._startPollingUDP(drSock, _GALIL_UDP_ADDR_TUPLE)
 
 
-		#self.startPollingUDP()
+		#self._startPollingUDP()
 
 
-	def startPollingUDP(self, udpSock, galilAddrTup):
+	def _startPollingUDP(self, udpSock, galilAddrTup):
 
-			self.pollUDPTh = threading.Thread(target = self.pollUDP, name = "galilUDPPollThread", args = (udpSock, galilAddrTup))
+			self.pollUDPTh = threading.Thread(target = self._pollUDP, name = "galilUDPPollThread", args = (udpSock, galilAddrTup))
 			self.pollUDPTh.start()
 			self.threads.append(self.pollUDPTh)
 
 
-	def pollUDP(self, udpSock, galilAddrTup):
+	def _pollUDP(self, udpSock, galilAddrTup):
 		if self.doUDPFileLog:
 			fileH = open("posvelDR.txt", "a")
 		while self.running:
@@ -349,13 +349,13 @@ class GalilInterface():
 				if self.doUDPFileLog:
 					fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
 		# Turn off the data-record outputs
-		self.sendAndRecieveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)
+		self._sendAndReceiveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)
 
 		# Tell the galil to close the UDP socket
 		# This *seems* to work, though supposedly the IH command only works on sockets the galil opens as master.
 		# Undocumented features, AHOY!
 		# Never mind, it's documented, just in more recent docs
-		self.sendAndRecieveUDP("IHS=-3;\r\n", udpSock, galilAddrTup)	# IHS=-3 means "close the socket this command is received on"
+		self._sendAndReceiveUDP("IHS=-3;\r\n", udpSock, galilAddrTup)	# IHS=-3 means "close the socket this command is received on"
 
 		pktFlushTime = 3
 		for x in range(pktFlushTime):
@@ -444,7 +444,7 @@ class GalilInterface():
 		try:
 			# Check status return code from the download operaton
 			# It should be two colons ("::"). Should probably check for that.
-			print "Recieved - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")
+			print "Received - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")
 
 		except:
 			print "Galil Timed Out"
@@ -498,12 +498,12 @@ class GalilInterface():
 				#
 
 				self.polCon.sendall("TP\r\n")
-				temp =  [int(float(i)) for i in self.recieveOnly(self.polCon).rstrip("\r\n:").strip().strip(":").replace(", ", " ").split()]
+				temp =  [int(float(i)) for i in self.receiveOnly(self.polCon).rstrip("\r\n:").strip().strip(":").replace(", ", " ").split()]
 				self.pos = temp
 
 				# and for the "TV" command
 				self.polCon.sendall("TV\r\n")
-				temp = [int(float(i)) for i in self.recieveOnly(self.polCon).rstrip("\r\n:").strip().strip(":").replace(", ", " ").split()]
+				temp = [int(float(i)) for i in self.receiveOnly(self.polCon).rstrip("\r\n:").strip().strip(":").replace(", ", " ").split()]
 				self.vel = temp
 
 				#Now, we check axis state (moving or not moving)
@@ -517,7 +517,7 @@ class GalilInterface():
 
 				# then query the galil
 				self.polCon.sendall(motionStStr)
-				recStr = self.recieveOnly(self.polCon)
+				recStr = self.receiveOnly(self.polCon)
 
 				#finally, another horrible one-liner to parse the return string
 
@@ -554,7 +554,7 @@ class GalilInterface():
 		self.con.sendall(cmdStr)
 
 
-	def recieveOnly(self, socketConnection, mask=False):				# Recieve from the galil until the galil sends a line terminator
+	def receiveOnly(self, socketConnection, mask=False):				# Receive from the galil until the galil sends a line terminator
 										# The terminates lines with either a  ":" or a "?"
 										#
 										# ":" - Indicates the previous command was successful
@@ -574,20 +574,20 @@ class GalilInterface():
 
 			except socket.error:					# I've Seen socket.error errors a few times. They seem to not break anything.
 													# Therefore, we just ignore them
-				print "recieveOnly socket.error wut"
+				print "receiveOnly socket.error wut"
 				errors += 1
-			if retString.find("?")+1:				# print error info if we recieve a error
+			if retString.find("?")+1:				# print error info if we receive a error
 				print "Syntax Error - ",
 				print "Returned Value:", retString
 				print "Error Code:"
-				print self.sendAndRecieve("TC1")		# "TC1" - This queries the galil for what the previous error was caused by
+				print self.sendAndReceive("TC1")		# "TC1" - This queries the galil for what the previous error was caused by
 				break
 
 			if errors > 100:
 				raise ValueError("Socket is returning garbage!")
 		return retString
 
-	def sendAndRecieve(self, cmdStr, debug = True):
+	def sendAndReceive(self, cmdStr, debug = True):
 		#
 		#	This is probably a little brittle for long term reliance
 		#
@@ -608,14 +608,14 @@ class GalilInterface():
 		retString = ""
 
 
-		retString = self.recieveOnly(self.con)				# check for the response.
+		retString = self.receiveOnly(self.con)				# check for the response.
 		retString = retString.rstrip("\r\n:").strip().strip(":")	# and strip off the garbage the galil sends to make interacting with it over telnet easier.
 
 		return retString
 
 	def getPosition(self):
 
-		positionStr = self.sendAndRecieve("TP")
+		positionStr = self.sendAndReceive("TP")
 
 		retVals = []
 
@@ -636,7 +636,7 @@ class GalilInterface():
 
 	def getVelocity(self):
 
-		velocityStr = self.sendAndRecieve("TV")
+		velocityStr = self.sendAndReceive("TV")
 
 		retVals = []
 
@@ -663,7 +663,7 @@ class GalilInterface():
 		self.checkAxis(axis)
 		command = "PA%s=%d" % (self.__axisIntToLetter(axis), position)
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 		#print command, positionStr
 
 		return responseStr
@@ -673,7 +673,7 @@ class GalilInterface():
 		self.checkAxis(axis)
 		command = "PR%s=%d" % (self.__axisIntToLetter(axis), deltaPosition)
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 		#print command, positionStr
 
 		return responseStr
@@ -683,7 +683,7 @@ class GalilInterface():
 		self.checkAxis(axis)
 		command = "SP%s=%d" % (self.__axisIntToLetter(axis), velocity)
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 		#print command, positionStr
 
 		return responseStr
@@ -693,7 +693,7 @@ class GalilInterface():
 		self.checkAxis(axis)
 		command = "JG%s=%d" % (self.__axisIntToLetter(axis), velocity)
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 		#print command, positionStr
 
 		return responseStr
@@ -705,14 +705,14 @@ class GalilInterface():
 		else:
 			command = "BG"
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 
 		return responseStr
 
 	def inMotion(self, axis):
 		command = "MG _BG%s " % self.__axisIntToLetter(axis)
 
-		responseStr = self.sendAndRecieve( command , debug = False)
+		responseStr = self.sendAndReceive( command , debug = False)
 
 
 		#print "PositionStr - ", positionStr
@@ -724,7 +724,7 @@ class GalilInterface():
 		else:
 			command = "ST"
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 
 		return responseStr
 
@@ -734,7 +734,7 @@ class GalilInterface():
 		else:
 			command = "SH"
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 
 		return responseStr
 
@@ -744,12 +744,12 @@ class GalilInterface():
 		else:
 			command = "MO"
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 
 		return responseStr
 
 	def checkMotorPower(self, axis = 0):
-		return "0.0000" == self.sendAndRecieve("MG _MO%s" % self.__axisIntToLetter(axis))
+		return "0.0000" == self.sendAndReceive("MG _MO%s" % self.__axisIntToLetter(axis))
 
 
 	#THIS THING
@@ -789,7 +789,7 @@ class GalilInterface():
 			line = line.rstrip().lstrip() 		# Clean up the tabs from the line since it's got newlines in it
 			self.sendOnly(line+';')
 			time.sleep(0.03)
-		print "Receiving:", self.recieveOnly(self.con)
+		print "Receiving:", self.receiveOnly(self.con)
 
 	def homeAxis(self, axis):
 
@@ -804,7 +804,7 @@ class GalilInterface():
 		command = "XQ %s" % func
 
 
-		responseStr = self.sendAndRecieve( command )
+		responseStr = self.sendAndReceive( command )
 
 		return responseStr
 
