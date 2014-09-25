@@ -47,6 +47,7 @@ class GalilInterface():
 
 	threads = []
 	haveGpsLock = False
+	gpsTime = False
 
 	def __axisIntToLetter(self, axis):
 		return chr(65+axis)
@@ -295,6 +296,7 @@ class GalilInterface():
 				if dr:
 					self.udpPackets += 1
 					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
+					self.gpsTime = sampleTime
 
 
 					# This may asplode on 32 bit platforms, or anywhere using 32 bit signed ints. Not sure how python
