@@ -48,6 +48,7 @@ class GalilInterface():
 	threads = []
 	haveGpsLock = False
 	gpsTime = False
+	gpsDelTime = False
 
 	def __axisIntToLetter(self, axis):
 		return chr(65+axis)
@@ -324,9 +325,11 @@ class GalilInterface():
 							self.inMot[offset]  = dr[axis]["status"]["moving"]
 							self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
 
+					curTOW = PyGalil.drParse.getMsTOWwMasking()
+					towErr = curTOW - sampleTime
+					self.gpsDelTime = -towErr
+
 					if self.doUDPFileLog:
-						curTOW = PyGalil.drParse.getMsTOWwMasking()
-						towErr = curTOW - sampleTime
 						logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
 						fileH.write(logStr)
 				else:
