@@ -299,25 +299,15 @@ class GalilInterface():
 					self.gpsTime = sampleTime
 
 
-					# This may asplode on 32 bit platforms, or anywhere using 32 bit signed ints. Not sure how python
-					# Manages that sort of thing.
-					# 1 << 31 is 0x80_00_00_00, or 0b1000_0000_0000_0000_0000_0000_0000_0000
-					# Also known as the sign bit for 32 bit signed ints.
-					# However, in this case, it's being used as the "have GPS lock" status flag
-					if sampleTime > (1 << 31):
-						self.haveGpsLock = True
+					# The top two bits of GI8 are bit 17 and 18 of the elevation encoder
+					# the third bit is the GPS-lock status.
+					# The rest are the top bits of the time-stamp
 
-						# Using // for divide because python 3 compatibility will be a thing, and I want to make it explicit I want
-						# a modulo division
-						sampleTime = sampleTime // (1 << 31)
+					if dr["I"]["GI8"] & (1 << 5):
+						self.haveGpsLock = True
 					else:
 						self.haveGpsLock = False
 
-					#print dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"] & 0x1F
-					#logStr = "DR Received, %s, %s, %s, %s\n" % (dr["I"]["GI4"], dr["I"]["GI5"], dr["I"]["GI9"], dr["I"]["GI8"])
-					#print logStr,
-
-					#print dr
 
 					# Axis letter in the DR dictionary, and their corresonding offset
 					# in the self.pos/self.vel/self.inMot arrays
