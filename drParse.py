@@ -1,5 +1,7 @@
 '''
 
+Galil Data-Record block structures:
+
  UB = Unsigned byte			# 1 Byte
  UW = Unsigned Word			# 2 Bytes
  SW = Signed Word			# 2 Bytes
@@ -155,6 +157,7 @@ ST_BLK_SIZE 		= struct.calcsize(ST_BLK_PARSE_STR)
 AX_BLK_PARSE_STR	= "<xxBBlllllhh"
 AX_BLK_SIZE 		= struct.calcsize(AX_BLK_PARSE_STR)
 
+
 def bitflip(intIn):
 	"""Flips the bits of intIn."""
 	ret = 0
@@ -164,7 +167,9 @@ def bitflip(intIn):
 
 	return ret
 
-def _BV(inVal):			# Common mnemomic for specifying a bit-value
+
+# Common mnemomic for specifying a bit-value. Stolen from AVR libc
+def _BV(inVal):
 	return 1<<inVal
 
 def axis(n):
@@ -186,10 +191,12 @@ def parseIBlock(iBlkStr):
 
 	vals = struct.unpack(I_BLK_PARSE_STR, iBlkStr)
 
-	ret = dict(zip(keys, vals))  # Don't like this, but I have no good reason *why*, so what the fuck
+	# Build dict of {key:value}
+	ret = dict(zip(keys, vals))
 
-	ret["GI8"] = bitflip(ret["GI8"])	# GI8 is reversed in the hardware. We need to flip it back to
-										# make it valid
+	# GI8 is reversed in the hardware. We need to flip it back to make it valid
+	ret["GI8"] = bitflip(ret["GI8"])
+
 	return ret
 
 def parseAxisBlock(axBlkStr):
@@ -207,8 +214,13 @@ def parseAxisBlock(axBlkStr):
 
 	# The fucking galil is little endian, so [:2] splits off the segment of the string we want, and [::-1] reverses it
 	statusBs = ConstBitStream(bytes=axBlkStr[:2][::-1])
-	statusVals = statusBs.readlist(["uint:1"]*16)  # Status is 16 boolean values packed into a uint_16
+
+	# Status is 16 boolean values packed into a uint_16
+	statusVals = statusBs.readlist(["uint:1"]*16)
+
+	# zip flags and names into dict
 	zipped = zip(statusKeys, statusVals)
+
 	vals = [dict(zipped)]
 	vals.extend(struct.unpack(AX_BLK_PARSE_STR, axBlkStr))
 
@@ -220,22 +232,25 @@ def parseAxisBlock(axBlkStr):
 def parseDataRecord(drString):
 	if len(drString) < 4:
 		print "Invalid data record"
-		return
+		return False
 
 	flags, drLen = struct.unpack("<HH", drString[:4])
 	if len(drString) != drLen:
 		print "Invalid DR length"
-		return
+		return False
 
-	flags = (flags / 2**8) + ((flags % 2**8) * 2**8)
-	# Byte swap the flags (cause it's sent big-endian?) This doesn't match the docs, but it seem to match what I'm actually receiving.
+	# Byte swap the flags (cause it's sent big-endian?)
+	# This doesn't match the docs, but it seem to match what I'm actually receiving.
 	# Done with integer math because fuck you
+	flags = (flags / 2**8) + ((flags % 2**8) * 2**8)
 
-	offsetInDat = 4		# first 4 bytes are the length and flags
+	# first 4 bytes are the length and flags, which are checked above.
+	# We therefore start with an offset of 4 bytes to skip them for extracting actual contents.
+	offsetInDat = 4
 
 	# Blocks transmitted in the order:
 	# I S T A B C D E F G H
-	ret = dict()
+	ret = {}
 	if flags & _BV(10):		# I Block (General Status and IO) is present
 
 		ret["I"] = parseIBlock(drString[offsetInDat:(offsetInDat+I_BLK_SIZE)])
@@ -252,11 +267,16 @@ def parseDataRecord(drString):
 			ret[axis(i)] = parseAxisBlock(drString[offsetInDat:(offsetInDat+AX_BLK_SIZE)])
 			offsetInDat += AX_BLK_SIZE
 
+	ret['lock'], ret['mstow'] = extractMsTow(ret)
+
+
+	curTOW = getMsTOWwMasking()
+	ret['towerr'] = curTOW - ret['mstow']
+
 	return ret
 
 def extractMsTow(dr):
 	timeStamp = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
-
 
 	# The top two bits of GI8 are bit 17 and 18 of the elevation encoder
 	# the third bit is the GPS-lock status.
