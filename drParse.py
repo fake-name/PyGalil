@@ -166,7 +166,7 @@ def bitflip(intIn):
 
 def _BV(inVal):			# Common mnemomic for specifying a bit-value
 	return 1<<inVal
-	
+
 def axis(n):
 	return chr(65+n)
 
@@ -174,7 +174,7 @@ def parseIBlock(iBlkStr):
 	ret = dict()
 	if len(iBlkStr) != iBlkSize:
 		raise ValueError("Invalid passed string length")
-	
+
 	#This is going to need considerable rework in the near future to properly decode the data in the GI bytes anyways (it's packed
 	# in the hardware). I need to extract the unpacking from the hardware first (blurgh).
 	keys = ["SN",
@@ -199,14 +199,14 @@ def parseAxisBlock(axBlkStr):
 
 	keys = ["status", "switches", "stopCode", "refPos", "motorPos",
 	"posError", "auxPos", "vel", "torque", "analog"]
-	
-	statusKeys = ["moving", "motionMode1", "motionMode1", "findingEdge", 
+
+	statusKeys = ["moving", "motionMode1", "motionMode1", "findingEdge",
 				  "homing", "homeP1Done", "homeP2Done", "coordMotion",
-				  "movingNeg", "contourMode", "slewingMode", "stopping", 
+				  "movingNeg", "contourMode", "slewingMode", "stopping",
 				  "finalDecel", "latchArmed", "offOnErrArmed", "motorOff"]
 
 	# The fucking galil is little endian, so [:2] splits off the segment of the string we want, and [::-1] reverses it
-	statusBs = ConstBitStream(bytes=axBlkStr[:2][::-1])  
+	statusBs = ConstBitStream(bytes=axBlkStr[:2][::-1])
 	statusVals = statusBs.readlist(["uint:1"]*16)  # Status is 16 boolean values packed into a uint_16
 	zipped = zip(statusKeys, statusVals)
 	vals = [dict(zipped)]
@@ -220,18 +220,18 @@ def parseAxisBlock(axBlkStr):
 def parseDataRecord(drString):
 	if len(drString) < 4:
 		print "Invalid data record"
-		return 
+		return
 
 	flags, drLen = struct.unpack("<HH", drString[:4])
 	if len(drString) != drLen:
 		print "Invalid DR length"
 		return
 
-	flags = (flags / 2**8) + ((flags % 2**8) * 2**8) 
+	flags = (flags / 2**8) + ((flags % 2**8) * 2**8)
 	# Byte swap the flags (cause it's sent big-endian?) This doesn't match the docs, but it seem to match what I'm actually receiving.
 	# Done with integer math because fuck you
 
-	offsetInDat = 4		# first 4 bytes are the length and flags 
+	offsetInDat = 4		# first 4 bytes are the length and flags
 
 	# Blocks transmitted in the order:
 	# I S T A B C D E F G H
@@ -243,16 +243,27 @@ def parseDataRecord(drString):
 
 	if flags & _BV(8): 		# S Block (segmented moves in S-plane)
 		offsetInDat += stBlkSize
-		
+
 	if flags & _BV(9): 		# T Block (segmented moves in T-plane)
 		offsetInDat += stBlkSize
-		
+
 	for i in range(8):
 		if flags & _BV(i): 	# Axis status block is present
 			ret[axis(i)] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
 			offsetInDat += axBlkSize
-			
+
 	return ret
+
+def extractMsTow(dr):
+	timeStamp = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
+
+
+	# The top two bits of GI8 are bit 17 and 18 of the elevation encoder
+	# the third bit is the GPS-lock status.
+	# The rest are the top bits of the time-stamp
+	lockStatus = dr["I"]["GI8"] & (1 << 5)
+
+	return lockStatus, timeStamp
 
 
 import datetime
@@ -264,8 +275,10 @@ def getMsTOWwMasking():		# Get the current millisecond time of week
 	startOfWeek = datetime.datetime.fromordinal(sunday)
 	#print startOfWeek, type(startOfWeek)
 	delta = datetime.datetime.utcnow() - startOfWeek
-	
+
 	return int(delta.total_seconds()*1000) & 0x1FFFFFFF
+
+
 
 if __name__ == "__main__":
 	print "DERP"
