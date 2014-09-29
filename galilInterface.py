@@ -217,7 +217,7 @@ class GalilInterface():
 			try:
 				tmp, ipAddr = socketConnection.recvfrom(1024)
 				self.udpInBuffer += tmp
-			except:
+			except socket.error:
 				pass
 			#print self.udpInBuffer
 
