@@ -144,16 +144,16 @@ SW	h axis analog					H block
 '''
 
 import struct
-from bitstring import BitStream, ConstBitStream
+from bitstring import ConstBitStream
 
-iBlkParseStr 	= "<H22B"
-iBlkSize 		= struct.calcsize(iBlkParseStr)
+I_BLK_PARSE_STR 	= "<H22B"
+I_BLK_SIZE 		= struct.calcsize(I_BLK_PARSE_STR)
 
-stBlkParseStr	= "<HHl"
-stBlkSize 		= struct.calcsize(stBlkParseStr)
+ST_BLK_PARSE_STR	= "<HHl"
+ST_BLK_SIZE 		= struct.calcsize(ST_BLK_PARSE_STR)
 
-axBlkParseStr	= "<xxBBlllllhh"
-axBlkSize 		= struct.calcsize(axBlkParseStr)
+AX_BLK_PARSE_STR	= "<xxBBlllllhh"
+AX_BLK_SIZE 		= struct.calcsize(AX_BLK_PARSE_STR)
 
 def bitflip(intIn):
 	"""Flips the bits of intIn."""
@@ -172,7 +172,7 @@ def axis(n):
 
 def parseIBlock(iBlkStr):
 	ret = dict()
-	if len(iBlkStr) != iBlkSize:
+	if len(iBlkStr) != I_BLK_SIZE:
 		raise ValueError("Invalid passed string length")
 
 	#This is going to need considerable rework in the near future to properly decode the data in the GI bytes anyways (it's packed
@@ -184,7 +184,7 @@ def parseIBlock(iBlkStr):
 	"GO5", "GO6", "GO7", "GO8", "GO9",
 	"EC", "GS"]
 
-	vals = struct.unpack(iBlkParseStr, iBlkStr)
+	vals = struct.unpack(I_BLK_PARSE_STR, iBlkStr)
 
 	ret = dict(zip(keys, vals))  # Don't like this, but I have no good reason *why*, so what the fuck
 
@@ -194,7 +194,7 @@ def parseIBlock(iBlkStr):
 
 def parseAxisBlock(axBlkStr):
 	ret = dict()
-	if len(axBlkStr) != axBlkSize:
+	if len(axBlkStr) != AX_BLK_SIZE:
 		raise ValueError("Invalid passed string length")
 
 	keys = ["status", "switches", "stopCode", "refPos", "motorPos",
@@ -210,7 +210,7 @@ def parseAxisBlock(axBlkStr):
 	statusVals = statusBs.readlist(["uint:1"]*16)  # Status is 16 boolean values packed into a uint_16
 	zipped = zip(statusKeys, statusVals)
 	vals = [dict(zipped)]
-	vals.extend(struct.unpack(axBlkParseStr, axBlkStr))
+	vals.extend(struct.unpack(AX_BLK_PARSE_STR, axBlkStr))
 
 	ret = dict(zip(keys, vals))
 
@@ -238,19 +238,19 @@ def parseDataRecord(drString):
 	ret = dict()
 	if flags & _BV(10):		# I Block (General Status and IO) is present
 
-		ret["I"] = parseIBlock(drString[offsetInDat:(offsetInDat+iBlkSize)])
-		offsetInDat += iBlkSize
+		ret["I"] = parseIBlock(drString[offsetInDat:(offsetInDat+I_BLK_SIZE)])
+		offsetInDat += I_BLK_SIZE
 
 	if flags & _BV(8): 		# S Block (segmented moves in S-plane)
-		offsetInDat += stBlkSize
+		offsetInDat += ST_BLK_SIZE
 
 	if flags & _BV(9): 		# T Block (segmented moves in T-plane)
-		offsetInDat += stBlkSize
+		offsetInDat += ST_BLK_SIZE
 
 	for i in range(8):
 		if flags & _BV(i): 	# Axis status block is present
-			ret[axis(i)] = parseAxisBlock(drString[offsetInDat:(offsetInDat+axBlkSize)])
-			offsetInDat += axBlkSize
+			ret[axis(i)] = parseAxisBlock(drString[offsetInDat:(offsetInDat+AX_BLK_SIZE)])
+			offsetInDat += AX_BLK_SIZE
 
 	return ret
 
