@@ -5,7 +5,11 @@ import time
 import threading
 import traceback
 
-import globalConf
+try:
+	import globalConf
+except ImportError:
+	globalConf = type('', (), {})  # Empty, extensible object.
+	globalConf.fakeGalil = False
 
 if not globalConf.fakeGalil:
 	import socket
@@ -17,7 +21,11 @@ else:
 import sys
 
 import math
-import PyGalil.drParse
+try:
+	import PyGalil.drParse as drParse
+except ImportError:
+	import drParse
+
 
 import os.path
 
@@ -47,8 +55,8 @@ class GalilInterface():
 
 	threads = []
 	haveGpsLock = False
-	gpsTime = False
-	gpsDelTime = False
+	gpsMsTow = False
+	gpsMsTowErr = False
 
 	def __axisIntToLetter(self, axis):
 		return chr(65+axis)
@@ -56,12 +64,41 @@ class GalilInterface():
 	def __axisLetterToInt(self, axis):
 		return ord(axis[-1])-65
 
+
+	# Whoo getters!
 	@property
 	def haveLock(self):
 		return self.haveGpsLock
 
+	@property
+	def gpsTime(self):
+		return self.gpsMsTow
 
-	def __init__(self, ip, port = 23, poll = False, resetGalil = False, download = True, unsol = True, dr = True):
+	@property
+	def gpsDelTime(self):
+		return self.gpsMsTowErr
+
+
+
+
+
+
+	def __init__(self,
+					ip,                   # Remote IP of the galil
+					port       = 23,      # Port to use when talking to the galil
+					                      # (they normally listen on all ports, using telnet's
+					                      # port makes it so wireshark decodes any com traffic nicely)
+					poll       = False,   # Poll for system state using a TCP socket. Processor intensive.
+					resetGalil = False,   # Reset galil on connect.
+					download   = True,    # Download galilCode from `stageCode.dmc` on connect
+					unsol      = True,    # Open a secondary TCP socket for unsolicited messages.
+					dr         = True,    # Enable and activate Data-Record outputs.
+					debug      = False):  # Debug- Debug printing
+
+		if debug:
+			self.debug = True
+		else:
+			self.debug = False
 
 
 		self.port = port
@@ -240,7 +277,7 @@ class GalilInterface():
 		while not ret.find("IH") + 1:
 			ret =  self._sendAndReceiveUDP("WH;", drSock, _GALIL_UDP_ADDR_TUPLE)
 			if not ret.find("IH") + 1:
-				print "Bad return value -", ret
+				print "Bad return value - '%s'" % ret
 
 		self.udpHandleNumber = self.__axisLetterToInt(ret)
 		if (self.udpHandleNumber > 7) or (self.udpHandleNumber < 0) :
@@ -289,25 +326,11 @@ class GalilInterface():
 			try:
 				dat, ip = udpSock.recvfrom(1024)
 				#print "received", len(dat), ip,
-				dr = PyGalil.drParse.parseDataRecord(dat)
+				dr = drParse.parseDataRecord(dat)
 
-				# TODO: Refactor some of this decoding mess.
-				# this needs to be converted to proper decoding in the drParse module.
-				# Blurgh
 				if dr:
 					self.udpPackets += 1
-					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
-					self.gpsTime = sampleTime
-
-
-					# The top two bits of GI8 are bit 17 and 18 of the elevation encoder
-					# the third bit is the GPS-lock status.
-					# The rest are the top bits of the time-stamp
-
-					if dr["I"]["GI8"] & (1 << 5):
-						self.haveGpsLock = True
-					else:
-						self.haveGpsLock = False
+					self.haveGpsLock, self.gpsMsTow = drParse.extractMsTow(dr)
 
 
 					# Axis letter in the DR dictionary, and their corresonding offset
@@ -325,13 +348,21 @@ class GalilInterface():
 							self.inMot[offset]  = dr[axis]["status"]["moving"]
 							self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
 
-					curTOW = PyGalil.drParse.getMsTOWwMasking()
-					towErr = curTOW - sampleTime
-					self.gpsDelTime = -towErr
+
+					curTOW = drParse.getMsTOWwMasking()
+					towErr = curTOW - self.gpsMsTow
+					self.gpsMsTowErr = -towErr
 
 					if self.doUDPFileLog:
-						logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
+						logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, self.gpsMsTow, towErr)
 						fileH.write(logStr)
+
+
+					if self.debug:
+						print("Data record!")
+						print("MSTOW", self.gpsTime)
+						print("MSTOW err", self.gpsDelTime)
+
 				else:
 					if self.doUDPFileLog:
 						fileH.write("Bad DR Received, %s\n" % (time.time()))
@@ -343,6 +374,7 @@ class GalilInterface():
 				print "pollUDP socket.error wut"
 				if self.doUDPFileLog:
 					fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
+
 		# Turn off the data-record outputs
 		self._sendAndReceiveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)
 
@@ -850,7 +882,7 @@ class GalilInterface():
 def test():
 	print "RUNNING GALIL CONNECTION TESTS"
 
-	gInt = GalilInterface(ip = "10.1.2.250", poll = False, resetGalil = True, unsol = False, download = False)
+	gInt = GalilInterface(ip = "10.1.2.250", poll = False, resetGalil = True, unsol = True, download = False, debug=True, dr=True)
 
 
 	time.sleep(1)
