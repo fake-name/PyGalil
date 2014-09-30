@@ -329,9 +329,13 @@ class GalilInterface():
 
 
 	def handleDatarecord(self, dr):
-		self.udpPackets += 1
-		self.haveGpsLock, self.gpsMsTow = drParse.extractMsTow(dr)
 
+		self.udpPackets += 1
+
+		# Pull out status vars and single values
+		self.gpsMsTow    = dr['mstow']
+		self.haveGpsLock = dr['lock']
+		self.gpsMsTowErr = dr['towerr'] * -1
 
 		# Axis letter in the DR dictionary, and their corresonding offset
 		# in the self.pos/self.vel/self.inMot arrays
@@ -349,12 +353,9 @@ class GalilInterface():
 				self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
 
 
-		curTOW = drParse.getMsTOWwMasking()
-		towErr = curTOW - self.gpsMsTow
-		self.gpsMsTowErr = -towErr
 
 		if self.doUDPFileLog:
-			logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, self.gpsMsTow, towErr)
+			logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), self.gpsMsTow, self.gpsMsTow, self.gpsMsTowErr)
 			self.fileH.write(logStr)
 
 
