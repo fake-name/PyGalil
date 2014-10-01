@@ -387,7 +387,7 @@ class GalilInterface():
 		except:
 			pass
 
-		gcFile = os.path.join(os.getcwd(), 'galilCode', "stageCode.dmc")
+		gcFile = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'galilCode', "stageCode.dmc")
 		codeFile = open(gcFile, "r")
 		routines = codeFile.read()
 		codeFile.close()
@@ -402,11 +402,8 @@ class GalilInterface():
 
 			line = line.rstrip()					# Strip whatever variety of \r\n chars are in the file
 
-			if line == "":						# add a comment character ("'") to all empty lines
-				line = "'"					# so they don't break the galil
-										# the galil terminal does this silently, behind the scenes, when you send a code file.
-										# very confusing, since the manual states that empty lines are not allowed, but they
-										# work anyways within the galilTerminal application
+			if line == "" or line.strip(" ")[0:2] == "NO": # ignore blank and comment lines
+				continue
 
 			cleanedLine = line + "\r"				# the Galil wants carriage-return (only!) line endings.
 										# I wonder if the original galil protocol design work was done on a mac?
