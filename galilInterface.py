@@ -886,7 +886,7 @@ class GalilInterface():
 				self.con.shutdown(socket.SHUT_RDWR)
 				self.con.close()
 				self.con = None
-		except socket.error:
+		except (TypeError, socket.error):
 			pass
 
 
