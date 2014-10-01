@@ -464,7 +464,7 @@ class GalilInterface():
 
 			self.con.sendall(cleanedLine)				# finally, send the line
 			try:
-				if self.con.recv(256):				# and check for a response
+				if self.con.recv(256) and self.con.recv(256) != ":": # and check for a response
 										# (there shouldn't be. You only get a response of there is an error)
 					raise ValueError("Error downloading galil code")
 			except socket.error:
