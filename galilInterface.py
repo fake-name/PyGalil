@@ -5,7 +5,11 @@ import time
 import threading
 import traceback
 
-import globalConf
+try:
+	import globalConf
+except ImportError:
+	globalConf = type('', (), {})  # Empty, extensible object.
+	globalConf.fakeGalil = False
 
 if not globalConf.fakeGalil:
 	import socket
@@ -17,7 +21,11 @@ else:
 import sys
 
 import math
-import PyGalil.drParse
+try:
+	import PyGalil.drParse as drParse
+except ImportError:
+	import drParse
+
 
 import os.path
 
@@ -47,8 +55,8 @@ class GalilInterface():
 
 	threads = []
 	haveGpsLock = False
-	gpsTime = False
-	gpsDelTime = False
+	gpsMsTow = False
+	gpsMsTowErr = False
 
 	def __axisIntToLetter(self, axis):
 		return chr(65+axis)
@@ -56,12 +64,41 @@ class GalilInterface():
 	def __axisLetterToInt(self, axis):
 		return ord(axis[-1])-65
 
+
+	# Whoo getters!
 	@property
 	def haveLock(self):
 		return self.haveGpsLock
 
+	@property
+	def gpsTime(self):
+		return self.gpsMsTow
 
-	def __init__(self, ip, port = 23, poll = False, resetGalil = False, download = True, unsol = True, dr = True):
+	@property
+	def gpsDelTime(self):
+		return self.gpsMsTowErr
+
+
+
+
+
+
+	def __init__(self,
+					ip,                   # Remote IP of the galil
+					port       = 23,      # Port to use when talking to the galil
+					                      # (they normally listen on all ports, using telnet's
+					                      # port makes it so wireshark decodes any com traffic nicely)
+					poll       = False,   # Poll for system state using a TCP socket. Processor intensive.
+					resetGalil = False,   # Reset galil on connect.
+					download   = True,    # Download galilCode from `stageCode.dmc` on connect
+					unsol      = True,    # Open a secondary TCP socket for unsolicited messages.
+					dr         = True,    # Enable and activate Data-Record outputs.
+					debug      = False):  # Debug- Debug printing
+
+		if debug:
+			self.debug = True
+		else:
+			self.debug = False
 
 
 		self.port = port
@@ -80,7 +117,12 @@ class GalilInterface():
 
 
 
-		self.sendOnly("IHT=-3;")	# Close ALL THE (other) SOCKETS
+		# Close ALL THE (other) SOCKETS
+		# This is a (somewhat) undocumented function call.
+		# It closes ALL the sockets on the galil, not just the one
+		# the message is received on.
+		self.sendOnly("IHT=-3;")
+
 
 		if poll:
 			print "Beginning Solicited TCP Polling"
@@ -93,6 +135,12 @@ class GalilInterface():
 		if dr:
 			print "Setting up data-record transfers"
 			self.initUDPMessageSocket()
+
+		if self.doUDPFileLog:
+			self.fileH = open("posvelDR.txt", "a")
+
+	def __del__(self):
+		self.close()
 
 	def __initUnsolicitedMessageSocket(self):
 		# The reccomended way for handling both solicited and unsolicited messages from the galil is to use two sockets. One socket is for normal
@@ -169,7 +217,7 @@ class GalilInterface():
 			try:
 				tmp, ipAddr = socketConnection.recvfrom(1024)
 				self.udpInBuffer += tmp
-			except:
+			except socket.error:
 				pass
 			#print self.udpInBuffer
 
@@ -240,7 +288,7 @@ class GalilInterface():
 		while not ret.find("IH") + 1:
 			ret =  self._sendAndReceiveUDP("WH;", drSock, _GALIL_UDP_ADDR_TUPLE)
 			if not ret.find("IH") + 1:
-				print "Bad return value -", ret
+				print "Bad return value - '%s'" % ret
 
 		self.udpHandleNumber = self.__axisLetterToInt(ret)
 		if (self.udpHandleNumber > 7) or (self.udpHandleNumber < 0) :
@@ -280,61 +328,58 @@ class GalilInterface():
 			self.threads.append(self.pollUDPTh)
 
 
-	def _pollUDP(self, udpSock, galilAddrTup):
-		if self.doUDPFileLog:
-			fileH = open("posvelDR.txt", "a")
-		while self.running:
+	def handleDatarecord(self, dr):
 
+		self.udpPackets += 1
+
+		# Pull out status vars and single values
+		self.gpsMsTow    = dr['mstow']
+		self.haveGpsLock = dr['lock']
+		self.gpsMsTowErr = dr['towerr'] * -1
+
+		# Axis letter in the DR dictionary, and their corresonding offset
+		# in the self.pos/self.vel/self.inMot arrays
+		axes = [("A", 0),
+				("B", 1),
+				("C", 2),
+				("D", 3)]
+
+		for axis, offset in axes:
+			if axis in dr:
+				#print dr[axis]
+				self.pos[offset]    = dr[axis]["motorPos"]
+				self.vel[offset]    = dr[axis]["vel"]
+				self.inMot[offset]  = dr[axis]["status"]["moving"]
+				self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
+
+
+
+		if self.doUDPFileLog:
+			logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), self.gpsMsTow, self.gpsMsTow, self.gpsMsTowErr)
+			self.fileH.write(logStr)
+
+
+		if self.debug:
+			print("Data record!")
+			print("MSTOW", self.gpsTime)
+			print("MSTOW err", self.gpsDelTime)
+
+
+	def _pollUDP(self, udpSock, galilAddrTup):
+
+		while self.running:
 
 			try:
 				dat, ip = udpSock.recvfrom(1024)
 				#print "received", len(dat), ip,
-				dr = PyGalil.drParse.parseDataRecord(dat)
+				dr = drParse.parseDataRecord(dat)
 
-				# TODO: Refactor some of this decoding mess.
-				# this needs to be converted to proper decoding in the drParse module.
-				# Blurgh
 				if dr:
-					self.udpPackets += 1
-					sampleTime = ((dr["I"]["GI8"] & 0x1F) * 2**24) + (dr["I"]["GI9"] * 2**16) + (dr["I"]["GI5"] * 2**8) + (dr["I"]["GI4"])
-					self.gpsTime = sampleTime
-
-
-					# The top two bits of GI8 are bit 17 and 18 of the elevation encoder
-					# the third bit is the GPS-lock status.
-					# The rest are the top bits of the time-stamp
-
-					if dr["I"]["GI8"] & (1 << 5):
-						self.haveGpsLock = True
-					else:
-						self.haveGpsLock = False
-
-
-					# Axis letter in the DR dictionary, and their corresonding offset
-					# in the self.pos/self.vel/self.inMot arrays
-					axes = [("A", 0),
-							("B", 1),
-							("C", 2),
-							("D", 3)]
-
-					for axis, offset in axes:
-						if axis in dr:
-							#print dr[axis]
-							self.pos[offset]    = dr[axis]["motorPos"]
-							self.vel[offset]    = dr[axis]["vel"]
-							self.inMot[offset]  = dr[axis]["status"]["moving"]
-							self.motOn[offset]  = not dr[axis]["status"]["motorOff"]
-
-					curTOW = PyGalil.drParse.getMsTOWwMasking()
-					towErr = curTOW - sampleTime
-					self.gpsDelTime = -towErr
-
-					if self.doUDPFileLog:
-						logStr = "DR Received, %s, %s, %s, %s\n" % (int(time.time()*1000), curTOW, sampleTime, towErr)
-						fileH.write(logStr)
+					self.handleDatarecord(dr)
 				else:
 					if self.doUDPFileLog:
-						fileH.write("Bad DR Received, %s\n" % (time.time()))
+						self.fileH.write("Bad DR Received, %s\n" % (time.time()))
+
 			except socket.timeout:					# Exit on timeout
 				pass
 
@@ -342,7 +387,8 @@ class GalilInterface():
 										# Therefore, we just ignore them
 				print "pollUDP socket.error wut"
 				if self.doUDPFileLog:
-					fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
+					self.fileH.write("Socket Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
+
 		# Turn off the data-record outputs
 		self._sendAndReceiveUDP("DR 0,0;\r\n", udpSock, galilAddrTup)
 
@@ -367,8 +413,7 @@ class GalilInterface():
 													# Therefore, we just ignore them
 
 				print "pollUDP exiting socket.error wut"
-		if self.doUDPFileLog:
-			fileH.close()
+
 
 	def __downloadFunctions(self):
 
@@ -384,7 +429,7 @@ class GalilInterface():
 		self.con.settimeout(0.0)
 		try:
 			self.con.recv(256)
-		except:
+		except socket.error:
 			pass
 
 		gcFile = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'galilCode', "stageCode.dmc")
@@ -422,7 +467,7 @@ class GalilInterface():
 				if self.con.recv(256):				# and check for a response
 										# (there shouldn't be. You only get a response of there is an error)
 					raise ValueError("Error downloading galil code")
-			except:
+			except socket.error:
 				pass
 
 			time.sleep(0.05)					# a short pause so we don't overflow the galil's TCP input buffer
@@ -438,7 +483,7 @@ class GalilInterface():
 			# It should be two colons ("::"). Should probably check for that.
 			print "Received - ", self.con.recv(64).rstrip().lstrip().rstrip(":").lstrip(":")
 
-		except:
+		except socket.error:
 			print "Galil Timed Out"
 			traceback.print_exc(6)
 
@@ -471,7 +516,7 @@ class GalilInterface():
 		try:
 			socketCon.settimeout(0.0)
 			socketCon.recv(1024)
-		except:
+		except socket.error:
 			pass
 		finally:
 			socketCon.settimeout(CONF_TIMEOUT)
@@ -522,7 +567,7 @@ class GalilInterface():
 
 				#print "Polled"
 				fp.write("Polled, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
-			except:
+			except socket.error:
 				print "Communications Error"
 				fp.write("Comm Error, %s, %s\n" % (time.time(), time.strftime("Datalog - %Y/%m/%d, %a, %H:%M:%S", time.localtime())))
 				traceback.print_exc()
@@ -824,6 +869,10 @@ class GalilInterface():
 					print "Stopping thread:", thread
 					thread.join()
 
+			if self.doUDPFileLog:
+				self.fileH.close()
+
+
 		try:							# Since this is called both manually and by the destructor, we have to simply catch and ignore errors here.
 										# otherwise, there are errors arising from the fact that it winds up trying to close a closed connection.
 			if self.con:
@@ -837,17 +886,23 @@ class GalilInterface():
 				self.con.shutdown(socket.SHUT_RDWR)
 				self.con.close()
 				self.con = None
-		except:
+		except socket.error:
 			pass
 
 
-	def __del__(self):
-		self.close()
+
 
 def test():
 	print "RUNNING GALIL CONNECTION TESTS"
 
-	gInt = GalilInterface(ip = "10.1.2.250", poll = False, resetGalil = True, unsol = False, download = False)
+	if len(sys.argv) == 2:
+		galilIp = sys.argv[1]
+		print("Connecting to galil at ip '%s'" % galilIp)
+	else:
+		galilIp = "10.1.2.250"
+
+
+	gInt = GalilInterface(ip = galilIp, poll = False, resetGalil = True, unsol = True, download = False, debug=True, dr=True)
 
 
 	time.sleep(1)
