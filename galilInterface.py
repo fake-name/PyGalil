@@ -415,7 +415,7 @@ class GalilInterface():
 				print "pollUDP exiting socket.error wut"
 
 
-	def __downloadFunctions(self):
+	def __downloadFunctions(self, stripComments=False):
 
 		#
 		# Download a file of galilCode to the remote controller.
@@ -447,8 +447,8 @@ class GalilInterface():
 
 			line = line.rstrip()					# Strip whatever variety of \r\n chars are in the file
 
-			if line == "" or line.strip(" ")[0:2] == "NO": # ignore blank and comment lines
-				continue
+			if stripComments and (line == "" or line.strip(" ")[0:2] == "NO"):
+				continue # ignore blank and comment lines if told to
 
 			cleanedLine = line + "\r"				# the Galil wants carriage-return (only!) line endings.
 										# I wonder if the original galil protocol design work was done on a mac?
@@ -464,7 +464,8 @@ class GalilInterface():
 
 			self.con.sendall(cleanedLine)				# finally, send the line
 			try:
-				if self.con.recv(256) and self.con.recv(256) != ":": # and check for a response
+				tmp = self.con.recv(256)
+				if tmp and tmp != ":": # and check for a response
 										# (there shouldn't be. You only get a response of there is an error)
 					raise ValueError("Error downloading galil code")
 			except socket.error:
