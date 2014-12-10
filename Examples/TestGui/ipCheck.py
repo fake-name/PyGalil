@@ -4,6 +4,7 @@
 import wx
 import sys
 import queVars
+import globalConf
 
 import socket
 
@@ -69,7 +70,7 @@ class MyFrame(wx.Frame):
 
 		self.ipTextCtrl = wx.TextCtrl(self, -1, "", style = wx.TE_PROCESS_ENTER)
 		self.ipTextCtrl.Bind(wx.EVT_TEXT_ENTER, self.evtIpEnter)
-		
+
 		self.TextCtrlFont = wx.Font(10, wx.MODERN, wx.NORMAL, wx.NORMAL, False, u'Consolas')
 		self.ipTextCtrl.SetFont(self.TextCtrlFont)
 		ipEntrySizer.Add(self.ipTextCtrl, 1, wx.ALL | wx.EXPAND, 3)
@@ -92,7 +93,7 @@ class MyFrame(wx.Frame):
 		statusSizer.Add(self.fakeGalilCheckbox, 0, wx.ALL, 5)
 
 		return statusSizer
-	
+
 	def __do_layout(self):
 		# begin wxGlade: MyFrame.__do_layout
 
@@ -108,7 +109,7 @@ class MyFrame(wx.Frame):
 		self.Layout()
 		# end wxGlade
 	def changeFakeGalilState(self, event):
-		queVars.fakeGalil = self.fakeGalilCheckbox.IsChecked()
+		globalConf.fakeGalil = self.fakeGalilCheckbox.IsChecked()
 		if not self.fakeGalilCheckbox.IsChecked():
 			self.ipOK = False
 			self.evtIpEnter(None)
@@ -139,8 +140,8 @@ class MyFrame(wx.Frame):
 				traceback.print_exc()
 				self.noticeText.SetLabel("Failed to open connection. Are you sure the IP is correct?")
 			queVars.galilIP = ipAddress
-			
-			
+
+
 		else:
 			self.noticeText.SetLabel("Error: Invalid IP")
 

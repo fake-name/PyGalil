@@ -5,6 +5,11 @@ except:
 	pass
 
 
+
+import sys
+sys.path.append("../../")
+
+
 import queVars
 import ipCheck
 
@@ -21,7 +26,7 @@ import threading
 #def __init__(self, ip, port = 23, fakeGalil = False, poll = False, resetGalil = False):
 
 
-queVars.gInt = galilInterface.GalilInterface(ip=queVars.galilIP, fakeGalil=queVars.fakeGalil, poll=False, resetGalil=False)
+queVars.gInt = galilInterface.GalilInterface(ip=queVars.galilIP, poll=False, resetGalil=False)
 
 queVars.serThread = threading.Thread(target = serIO.mainLoop, name = "serThread")
 queVars.serThread.start()

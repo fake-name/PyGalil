@@ -3,6 +3,7 @@
 
 import sys
 
+
 import queVars
 import time
 
@@ -13,9 +14,9 @@ import sys
 import time
 
 def mainLoop():
-	
+
 	while 1:
-		
+
 		if not queVars.Qout.empty():
 			temp = queVars.Qout.get()
 			print "Threading Message:",  temp, " ",
@@ -27,8 +28,8 @@ def mainLoop():
 				print "Serial Thread Exiting"
 				sys.exit(0)
 
-			
-			
+
+
 			if "moveRelative" in temp:
 				axis, deltaPosition = temp["moveRelative"]
 				queVars.gInt.moveRelative(axis, deltaPosition)
@@ -89,7 +90,7 @@ def mainLoop():
 				queVars.gInt.homeAxis(temp["homeAxis"])
 
 
-				
+
 
 		#queVars.gInt.moveRelative(0)
 		time.sleep(0.030)
