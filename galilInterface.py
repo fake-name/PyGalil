@@ -754,9 +754,9 @@ class GalilInterface():
 
 		responseStr = self.sendAndReceive( command , debug = False)
 
+		response = bool(float(responseStr))
 
-		#print "PositionStr - ", positionStr
-		return responseStr
+		return response
 
 	def endMotion(self, axis = None):
 		if axis != None:
