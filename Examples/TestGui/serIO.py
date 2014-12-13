@@ -82,8 +82,6 @@ def mainLoop():
 
 
 
-			if "pollGalil" in temp:
-				queVars.gInt.initUDPMessageSocket()
 
 
 			if "homeAxis" in temp:

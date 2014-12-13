@@ -134,7 +134,7 @@ class GalilInterface():
 
 		if dr:
 			print "Setting up data-record transfers"
-			self.initUDPMessageSocket()
+			self.__initUDPMessageSocket()
 
 		if self.doUDPFileLog:
 			self.fileH = open("posvelDR.txt", "a")
@@ -245,7 +245,7 @@ class GalilInterface():
 		return self._receiveUDP(socketConnection)
 
 
-	def initUDPMessageSocket(self):
+	def __initUDPMessageSocket(self):
 
 		print "Opening UDP Socket"
 
