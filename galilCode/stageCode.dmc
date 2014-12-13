@@ -16,11 +16,11 @@ JP #LOOP;
 
 NO Set up the input interrupt for the 1PPS stuff
 NO WAITPEQ - Wait for pin to equal
-NO Basically, if you don't wait for the pin to fall, you will trigger off the 
+NO Basically, if you don't wait for the pin to fall, you will trigger off the
 NO same pulse repeatedly
 #ININT;
   MG "Input Timestamp", TIME;
-#WAITPEQ;	
+#WAITPEQ;
 	JP #WAITPEQ, (@IN[5]=0);
 RI;
 
