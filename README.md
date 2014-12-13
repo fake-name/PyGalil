@@ -9,3 +9,5 @@ Currently only tested with Galil DMC-21xx controllers (those are the only ones I
 Heavily tested to be reliable over extremely long-duration connections (weeks!).
 
 Supports multiple mechanisms for remote monitoring of a connected galil as well.
+
+License: BSD/MIT
