@@ -10,6 +10,6 @@ Heavily tested to be reliable over extremely long-duration connections (weeks!).
 
 Supports multiple mechanisms for remote monitoring of a connected galil as well.
 
-Entirely python-native, only depends on the built-in `socket`, `threading` and the `struct` libraries.
+Entirely python-native, only depends on the built-in `socket`, `threading` and `struct` libraries.
 
 License: BSD/MIT
